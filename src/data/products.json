@@ -1,0 +1,95 @@
+{
+  "categories": [
+    {
+      "key": "gateSystems",
+      "title": "Kapı Sistemleri",
+      "slug": "kapi-sistemleri",
+      "description": "Bahçe, garaj ve otomatik geçiş çözümleri.",
+      "products": [
+        {
+          "key": "slidingGateMotors",
+          "title": "Yana Kayar Kapı Motorları",
+          "slug": "yana-kayar-kapi-motorlari",
+          "description": "Site, villa ve işletme girişleri için yoğun kullanıma uygun motor çözümleri.",
+          "children": [
+            {
+              "key": "residentialSliding",
+              "title": "Konut Tipi",
+              "slug": "konut-tipi-yana-kayar"
+            },
+            {
+              "key": "industrialSliding",
+              "title": "Endüstriyel Tip",
+              "slug": "endustriyel-yana-kayar"
+            }
+          ]
+        },
+        {
+          "key": "swingGateMotors",
+          "title": "Kanatlı Kapı Motorları",
+          "slug": "kanatli-kapi-motorlari",
+          "description": "Çift kanat ve tek kanat bahçe kapıları için otomasyon sistemleri.",
+          "children": [
+            {
+              "key": "linearArm",
+              "title": "Lineer Kollu",
+              "slug": "lineer-kollu"
+            },
+            {
+              "key": "articulatedArm",
+              "title": "Mafsallı Kollu",
+              "slug": "mafsalli-kollu"
+            }
+          ]
+        },
+        {
+          "key": "garageDoors",
+          "title": "Garaj Kapıları",
+          "slug": "garaj-kapilari",
+          "description": "Seksiyonel, kepenk ve panjur kontrollü garaj kapısı çözümleri.",
+          "children": []
+        }
+      ]
+    },
+    {
+      "key": "accessControl",
+      "title": "Geçiş Kontrol",
+      "slug": "gecis-kontrol",
+      "description": "Araç ve yaya geçişlerini kontrollü hale getiren sistemler.",
+      "products": [
+        {
+          "key": "barrierSystems",
+          "title": "Otomatik Bariyer Sistemleri",
+          "slug": "otomatik-bariyer-sistemleri",
+          "description": "Otopark, fabrika ve site girişleri için hızlı bariyer çözümleri.",
+          "children": [
+            {
+              "key": "parkingBarrier",
+              "title": "Otopark Bariyeri",
+              "slug": "otopark-bariyeri"
+            },
+            {
+              "key": "industrialBarrier",
+              "title": "Endüstriyel Bariyer",
+              "slug": "endustriyel-bariyer"
+            }
+          ]
+        },
+        {
+          "key": "plateRecognition",
+          "title": "Plaka Tanıma Sistemleri",
+          "slug": "plaka-tanima-sistemleri",
+          "description": "Yetkili araç geçişi, kayıt ve otopark kontrolü için kamera tabanlı çözümler.",
+          "children": []
+        },
+        {
+          "key": "photocellDoors",
+          "title": "Fotoselli Kapılar",
+          "slug": "fotoselli-kapilar",
+          "description": "Mağaza, hastane ve ofis girişleri için otomatik cam kapı sistemleri.",
+          "children": []
+        }
+      ]
+    }
+  ]
+}
