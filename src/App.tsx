@@ -1,122 +1,89 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { Canvas } from '@react-three/fiber';
+import { EnergyRing, ShaderPlane } from './components/ui/background-paper-shaders';
+import './App.css';
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <main className="page">
+      <div className="paperShaderBackground" aria-hidden="true">
+        <Canvas
+          camera={{ position: [0, 0, 5], fov: 48 }}
+          dpr={[1, 2]}
+          gl={{ alpha: true, antialias: true }}
+        >
+          <ShaderPlane position={[-1.7, 0.9, 0]} color1="#f0801a" color2="#d8d8d8" />
+          <ShaderPlane position={[1.7, -0.8, -0.3]} color1="#253669" color2="#f0801a" />
+          <EnergyRing radius={1.35} position={[1.25, 0.8, 0.1]} />
+          <EnergyRing radius={0.85} position={[-1.4, -0.9, 0.2]} />
+        </Canvas>
+      </div>
+
+      <section className="hero">
+        <div className="heroText">
+          <p className="eyebrow">HHS Otomatik Kapı Sistemleri</p>
+          <h1>
+            Otomatik kapı, bariyer ve geçiş sistemlerinde profesyonel çözümler
+          </h1>
+          <p className="lead">
+            Bahçe kapısı motorları, otomatik bariyer sistemleri, fotoselli
+            kapılar, garaj kapıları ve plaka tanıma çözümleri için keşif, satış,
+            montaj ve teknik destek.
+          </p>
+
+          <div className="actions">
+            <a className="primary" href="tel:+902642910060">
+              Hemen Ara
+            </a>
+            <a className="secondary" href="https://wa.me/905426142929">
+              WhatsApp Teklif Al
+            </a>
+          </div>
         </div>
-        <div>
-          <h1>Get started</h1>
+
+        <div className="heroCard">
+          <h2>25+ Yıllık Tecrübe</h2>
           <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
+            Yetkili bayi güvencesi, stoktan teslim ürünler ve saha deneyimiyle
+            hızlı çözüm.
           </p>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
       </section>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
+      <section className="services">
+        <h2>Hizmet Alanları</h2>
+        <div className="grid">
+          <article>
+            <h3>Bahçe Kapısı Motorları</h3>
+            <p>
+              Yana kayar ve kanatlı kapılar için motor, kumanda, fotosel ve
+              aksesuar çözümleri.
+            </p>
+          </article>
+          <article>
+            <h3>Otomatik Bariyer Sistemleri</h3>
+            <p>
+              Site, fabrika, otopark ve işletme girişleri için profesyonel
+              bariyer sistemleri.
+            </p>
+          </article>
+          <article>
+            <h3>Fotoselli Kapılar</h3>
+            <p>
+              Mağaza, hastane, ofis ve yoğun geçiş alanları için otomatik cam
+              kapı sistemleri.
+            </p>
+          </article>
+          <article>
+            <h3>Plaka Tanıma Sistemleri</h3>
+            <p>
+              Araç giriş kontrolü, ambulans geçiş önceliği ve yetkili araç geçiş
+              çözümleri.
+            </p>
+          </article>
         </div>
       </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    </main>
+  );
 }
 
-export default App
+export default App;
