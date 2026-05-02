@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "deploy:api": "wrangler deploy",
     "deploy:web": "npm run build && wrangler pages deploy dist --project-name=hhs-site",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -19,6 +20,7 @@
     "three": "^0.184.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260501.1",
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.12.2",
     "@types/react": "^19.2.14",

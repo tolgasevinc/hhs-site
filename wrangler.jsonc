@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hhs-yeni-site-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-01",
+
+  "observability": {
+    "enabled": true,
+  },
+
+  "upload_source_maps": true,
+
+  "compatibility_flags": ["nodejs_compat"],
+
+  "routes": [
+    {
+      "pattern": "hhsotomatikkapi.com/api/*",
+      "zone_name": "hhsotomatikkapi.com",
+    },
+  ],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hhs-yeni-site-db",
+      "database_id": "a04c3ca3-5059-4a97-af1c-85a4aa4c7b5b",
+    },
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "ASSETS",
+      "bucket_name": "hhs-yeni-site-assets",
+    },
+  ],
+}
