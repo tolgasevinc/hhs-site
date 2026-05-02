@@ -2,6 +2,8 @@ export interface Env {
   DB: D1Database;
   ASSETS: R2Bucket;
   ADMIN_BOOTSTRAP_TOKEN?: string;
+  RESEND_API_KEY?: string;
+  SERVICE_REQUEST_FROM_EMAIL?: string;
 }
 
 type ProductChild = {
@@ -55,6 +57,23 @@ type ContactSettingsInput = {
   email: string;
   address: string;
   googleMapUrl: string;
+  appleMapUrl: string;
+  footerDescription: string;
+};
+
+type ServiceRequestInput = {
+  requestType: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  productKey?: string;
+  description?: string;
+};
+
+type ServiceRequestRecord = ServiceRequestInput & {
+  id: string;
+  productTitle: string;
+  emailSent: boolean;
 };
 
 type ProductRow = {
@@ -118,6 +137,8 @@ type ContactSettingsRow = {
   email: string;
   address: string;
   google_map_url: string;
+  apple_map_url: string;
+  footer_description: string;
 };
 
 type AdminUserInput = {
@@ -224,6 +245,14 @@ const getContactSettingsRequestBody = async (request: Request) => {
   }
 };
 
+const getServiceRequestBody = async (request: Request) => {
+  try {
+    return (await request.json()) as ServiceRequestInput;
+  } catch {
+    return null;
+  }
+};
+
 const getAdminUserRequestBody = async (request: Request) => {
   try {
     return (await request.json()) as AdminUserInput;
@@ -246,6 +275,20 @@ const isValidSocialLinkInput = (body: SocialLinkInput | null): body is SocialLin
 
 const isValidContactSettingsInput = (body: ContactSettingsInput | null): body is ContactSettingsInput => {
   return Boolean(body && typeof body.phonePrimary === 'string' && typeof body.email === 'string');
+};
+
+const isValidServiceRequestInput = (body: ServiceRequestInput | null): body is ServiceRequestInput => {
+  return Boolean(
+    body &&
+      typeof body.requestType === 'string' &&
+      body.requestType.trim() &&
+      typeof body.firstName === 'string' &&
+      body.firstName.trim() &&
+      typeof body.lastName === 'string' &&
+      body.lastName.trim() &&
+      typeof body.phone === 'string' &&
+      body.phone.trim(),
+  );
 };
 
 const isValidCreateAdminUserInput = (body: AdminUserInput | null): body is AdminUserInput => {
@@ -797,7 +840,17 @@ const defaultContactSettings: ContactSettingsInput = {
   email: 'info@hhsotomatikkapi.com',
   address: 'Sakarya ve çevre iller',
   googleMapUrl: '',
+  appleMapUrl: '',
+  footerDescription: 'Otomatik kapı, bariyer ve geçiş kontrol sistemlerinde keşif, satış, montaj ve teknik destek.',
 };
+
+const escapeHtml = (value: string) =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 
 const mapContactSettings = (settings: ContactSettingsRow): ContactSettingsInput => ({
   phonePrimary: settings.phone_primary,
@@ -807,6 +860,8 @@ const mapContactSettings = (settings: ContactSettingsRow): ContactSettingsInput 
   email: settings.email,
   address: settings.address,
   googleMapUrl: settings.google_map_url,
+  appleMapUrl: settings.apple_map_url ?? '',
+  footerDescription: settings.footer_description ?? defaultContactSettings.footerDescription,
 });
 
 const ensureContactSettingsTable = async (db: D1Database) => {
@@ -821,11 +876,29 @@ const ensureContactSettingsTable = async (db: D1Database) => {
         email TEXT NOT NULL DEFAULT '',
         address TEXT NOT NULL DEFAULT '',
         google_map_url TEXT NOT NULL DEFAULT '',
+        apple_map_url TEXT NOT NULL DEFAULT '',
+        footer_description TEXT NOT NULL DEFAULT 'Otomatik kapı, bariyer ve geçiş kontrol sistemlerinde keşif, satış, montaj ve teknik destek.',
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )`,
     )
     .run();
+
+  const columns = await db.prepare('PRAGMA table_info(contact_settings)').all<{ name: string }>();
+  const hasAppleMapUrlColumn = columns.results.some((column) => column.name === 'apple_map_url');
+  const hasFooterDescriptionColumn = columns.results.some((column) => column.name === 'footer_description');
+
+  if (!hasAppleMapUrlColumn) {
+    await db.prepare("ALTER TABLE contact_settings ADD COLUMN apple_map_url TEXT NOT NULL DEFAULT ''").run();
+  }
+
+  if (!hasFooterDescriptionColumn) {
+    await db
+      .prepare(
+        "ALTER TABLE contact_settings ADD COLUMN footer_description TEXT NOT NULL DEFAULT 'Otomatik kapı, bariyer ve geçiş kontrol sistemlerinde keşif, satış, montaj ve teknik destek.'",
+      )
+      .run();
+  }
 };
 
 const getContactSettings = async (db: D1Database) => {
@@ -835,7 +908,7 @@ const getContactSettings = async (db: D1Database) => {
     await ensureContactSettingsTable(db);
     settings = await db
       .prepare(
-        `SELECT id, phone_primary, phone_secondary, whatsapp, service, email, address, google_map_url
+        `SELECT id, phone_primary, phone_secondary, whatsapp, service, email, address, google_map_url, apple_map_url, footer_description
         FROM contact_settings
         WHERE id = 'default'
         LIMIT 1`,
@@ -861,8 +934,10 @@ const upsertContactSettings = async (db: D1Database, settings: ContactSettingsIn
         service,
         email,
         address,
-        google_map_url
-      ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?)
+        google_map_url,
+        apple_map_url,
+        footer_description
+      ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         phone_primary = excluded.phone_primary,
         phone_secondary = excluded.phone_secondary,
@@ -871,6 +946,8 @@ const upsertContactSettings = async (db: D1Database, settings: ContactSettingsIn
         email = excluded.email,
         address = excluded.address,
         google_map_url = excluded.google_map_url,
+        apple_map_url = excluded.apple_map_url,
+        footer_description = excluded.footer_description,
         updated_at = CURRENT_TIMESTAMP`,
     )
     .bind(
@@ -881,10 +958,151 @@ const upsertContactSettings = async (db: D1Database, settings: ContactSettingsIn
       settings.email,
       settings.address,
       settings.googleMapUrl,
+      settings.appleMapUrl ?? '',
+      settings.footerDescription ?? defaultContactSettings.footerDescription,
     )
     .run();
 
   return getContactSettings(db);
+};
+
+const ensureServiceRequestsTable = async (db: D1Database) => {
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS service_requests (
+        id TEXT PRIMARY KEY,
+        request_type TEXT NOT NULL,
+        first_name TEXT NOT NULL,
+        last_name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        product_key TEXT NOT NULL DEFAULT '',
+        product_title TEXT NOT NULL DEFAULT '',
+        description TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'new',
+        email_sent INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+    )
+    .run();
+
+  await db.prepare('CREATE INDEX IF NOT EXISTS idx_service_requests_created_at ON service_requests(created_at)').run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS idx_service_requests_status ON service_requests(status)').run();
+};
+
+const getCatalogItemTitle = async (db: D1Database, key = '') => {
+  if (!key) {
+    return '';
+  }
+
+  const product = await db.prepare('SELECT title FROM products WHERE key = ? LIMIT 1').bind(key).first<{ title: string }>();
+
+  if (product?.title) {
+    return product.title;
+  }
+
+  const category = await db
+    .prepare('SELECT title FROM product_categories WHERE key = ? LIMIT 1')
+    .bind(key)
+    .first<{ title: string }>();
+
+  return category?.title ?? '';
+};
+
+const sendServiceRequestEmail = async (
+  env: Env,
+  recipientEmail: string,
+  serviceRequest: ServiceRequestRecord,
+) => {
+  if (!env.RESEND_API_KEY || !recipientEmail) {
+    return false;
+  }
+
+  const customerName = `${serviceRequest.firstName} ${serviceRequest.lastName}`.trim();
+  const productLine = serviceRequest.productTitle || serviceRequest.productKey || 'Seçilmedi';
+  const html = `
+    <h2>Yeni servis kaydı</h2>
+    <p><strong>Tip:</strong> ${escapeHtml(serviceRequest.requestType)}</p>
+    <p><strong>Müşteri:</strong> ${escapeHtml(customerName)}</p>
+    <p><strong>Telefon:</strong> ${escapeHtml(serviceRequest.phone)}</p>
+    <p><strong>Ürün:</strong> ${escapeHtml(productLine)}</p>
+    <p><strong>Açıklama:</strong></p>
+    <p>${escapeHtml(serviceRequest.description ?? '').replaceAll('\n', '<br>')}</p>
+    <p><strong>Kayıt No:</strong> ${escapeHtml(serviceRequest.id)}</p>
+  `;
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${env.RESEND_API_KEY}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: env.SERVICE_REQUEST_FROM_EMAIL ?? 'HHS Otomatik Kapı <onboarding@resend.dev>',
+      to: [recipientEmail],
+      subject: `Yeni servis kaydı: ${serviceRequest.requestType}`,
+      html,
+    }),
+  });
+
+  return response.ok;
+};
+
+const createServiceRequest = async (db: D1Database, env: Env, input: ServiceRequestInput) => {
+  await ensureServiceRequestsTable(db);
+
+  const contactSettings = await getContactSettings(db);
+  const productKey = input.productKey?.trim() ?? '';
+  const serviceRequest: ServiceRequestRecord = {
+    id: crypto.randomUUID(),
+    requestType: input.requestType.trim(),
+    firstName: input.firstName.trim(),
+    lastName: input.lastName.trim(),
+    phone: input.phone.trim(),
+    productKey,
+    productTitle: await getCatalogItemTitle(db, productKey),
+    description: input.description?.trim() ?? '',
+    emailSent: false,
+  };
+
+  await db
+    .prepare(
+      `INSERT INTO service_requests (
+        id,
+        request_type,
+        first_name,
+        last_name,
+        phone,
+        product_key,
+        product_title,
+        description,
+        email_sent
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      serviceRequest.id,
+      serviceRequest.requestType,
+      serviceRequest.firstName,
+      serviceRequest.lastName,
+      serviceRequest.phone,
+      serviceRequest.productKey,
+      serviceRequest.productTitle,
+      serviceRequest.description,
+      0,
+    )
+    .run();
+
+  const emailSent = await sendServiceRequestEmail(env, contactSettings.email, serviceRequest).catch(() => false);
+  serviceRequest.emailSent = emailSent;
+
+  if (emailSent) {
+    await db
+      .prepare('UPDATE service_requests SET email_sent = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .bind(serviceRequest.id)
+      .run();
+  }
+
+  return serviceRequest;
 };
 
 const getCategory = async (db: D1Database, key: string) => {
@@ -1520,6 +1738,25 @@ export default {
           settings: await upsertContactSettings(env.DB, body),
         });
       }
+    }
+
+    if (url.pathname === '/api/service-requests' && request.method === 'POST') {
+      const body = await getServiceRequestBody(request);
+
+      if (!isValidServiceRequestInput(body)) {
+        return json({ ok: false, error: 'Invalid service request payload' }, { status: 400 });
+      }
+
+      const serviceRequest = await createServiceRequest(env.DB, env, body);
+
+      return json(
+        {
+          ok: true,
+          request: serviceRequest,
+          emailSent: serviceRequest.emailSent,
+        },
+        { status: 201 },
+      );
     }
 
     if (url.pathname === '/api/product-categories' && request.method === 'POST') {

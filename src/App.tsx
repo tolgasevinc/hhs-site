@@ -144,6 +144,8 @@ type ContactSettings = {
   email: string;
   address: string;
   googleMapUrl: string;
+  appleMapUrl: string;
+  footerDescription: string;
 };
 
 type AdminUser = {
@@ -159,6 +161,14 @@ type AdminUser = {
 type LoginFormState = {
   login: string;
   password: string;
+};
+
+type ServiceRequestFormState = {
+  requestType: string;
+  fullName: string;
+  phone: string;
+  productKey: string;
+  description: string;
 };
 
 type AdminSection = 'products' | 'users' | 'database';
@@ -236,6 +246,8 @@ const defaultContactSettings: ContactSettings = {
   email: 'info@hhsotomatikkapi.com',
   address: 'Sakarya ve çevre iller',
   googleMapUrl: '',
+  appleMapUrl: '',
+  footerDescription: 'Otomatik kapı, bariyer ve geçiş kontrol sistemlerinde keşif, satış, montaj ve teknik destek.',
 };
 
 const contactSettingFields: { key: keyof ContactSettings; label: string; placeholder: string }[] = [
@@ -246,7 +258,27 @@ const contactSettingFields: { key: keyof ContactSettings; label: string; placeho
   { key: 'email', label: 'Mail', placeholder: 'info@hhsotomatikkapi.com' },
   { key: 'address', label: 'Adres', placeholder: 'Açık adres' },
   { key: 'googleMapUrl', label: 'Google Map Link', placeholder: 'https://maps.google.com/...' },
+  { key: 'appleMapUrl', label: 'Apple Map Link', placeholder: 'https://maps.apple.com/...' },
+  {
+    key: 'footerDescription',
+    label: 'Footer Logo Altı Metin',
+    placeholder: 'Footer logo altında gösterilecek kısa açıklama',
+  },
 ];
+
+const serviceRequestTypes = [
+  { value: 'Arıza', label: 'Arıza', tone: 'danger', icon: '!' },
+  { value: 'Aksesuar Talebi', label: 'Aksesuar Talebi', tone: 'success', icon: '+' },
+  { value: 'Periyodik Bakım', label: 'Periyodik Bakım', tone: 'warning', icon: '↻' },
+];
+
+const emptyServiceRequestForm: ServiceRequestFormState = {
+  requestType: serviceRequestTypes[0].value,
+  fullName: '',
+  phone: '',
+  productKey: '',
+  description: '',
+};
 
 const createEmptyProductForm = (categoryKey = ''): ProductFormState => ({
   key: '',
@@ -490,6 +522,8 @@ function App() {
   const isPanelPage = window.location.pathname.toLowerCase() === '/panel';
   const [language, setLanguage] = useState('TR');
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
+  const [isServiceRequestModalOpen, setIsServiceRequestModalOpen] = useState(false);
+  const [isServiceTypeMenuOpen, setIsServiceTypeMenuOpen] = useState(false);
   const [isContactMenuOpen, setIsContactMenuOpen] = useState(false);
   const [hoveredCategoryGalleryIndex, setHoveredCategoryGalleryIndex] = useState<number | null>(null);
   const [selectedCategoryGalleryIndex, setSelectedCategoryGalleryIndex] = useState<number | null>(null);
@@ -512,6 +546,7 @@ function App() {
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isSavingSocialLinks, setIsSavingSocialLinks] = useState(false);
   const [isSavingContactSettings, setIsSavingContactSettings] = useState(false);
+  const [isSubmittingServiceRequest, setIsSubmittingServiceRequest] = useState(false);
   const [isSavingUser, setIsSavingUser] = useState(false);
   const [isLoadingDatabaseTables, setIsLoadingDatabaseTables] = useState(false);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
@@ -523,6 +558,8 @@ function App() {
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('footer');
   const [socialLinkForm, setSocialLinkForm] = useState<Record<string, string>>({});
   const [contactSettingsForm, setContactSettingsForm] = useState<ContactSettings>(defaultContactSettings);
+  const [serviceRequestForm, setServiceRequestForm] = useState<ServiceRequestFormState>(emptyServiceRequestForm);
+  const [serviceRequestMessage, setServiceRequestMessage] = useState('');
   const [editingProductKey, setEditingProductKey] = useState<string | null>(null);
   const [editingCategoryKey, setEditingCategoryKey] = useState<string | null>(null);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -572,6 +609,9 @@ function App() {
   const phoneSecondaryHref = createPhoneHref(contactSettings.phoneSecondary);
   const whatsappHref = createWhatsAppHref(contactSettings.whatsapp);
   const emailHref = createMailHref(contactSettings.email);
+  const selectedServiceRequestType =
+    serviceRequestTypes.find((requestType) => requestType.value === serviceRequestForm.requestType) ??
+    serviceRequestTypes[0];
   const categoryGalleryImages = adminCategories
     .map((category) => {
       const categoryFallbackProduct = adminProducts.find((product) => product.categoryKey === category.key);
@@ -795,6 +835,11 @@ function App() {
         return;
       }
 
+      if (isServiceTypeMenuOpen) {
+        setIsServiceTypeMenuOpen(false);
+        return;
+      }
+
       if (selectedDatabaseTable) {
         setSelectedDatabaseTable(null);
         return;
@@ -827,6 +872,11 @@ function App() {
 
       if (isQuoteModalOpen) {
         setIsQuoteModalOpen(false);
+        return;
+      }
+
+      if (isServiceRequestModalOpen) {
+        setIsServiceRequestModalOpen(false);
       }
     };
 
@@ -838,11 +888,13 @@ function App() {
   }, [
     isCategoryModalOpen,
     isContactMenuOpen,
+    isServiceTypeMenuOpen,
     imagePreview,
     isAssetManagerOpen,
     isProductModalOpen,
     pendingImageCrop,
     isQuoteModalOpen,
+    isServiceRequestModalOpen,
     isSettingsModalOpen,
     isUserModalOpen,
     selectedDatabaseTable,
@@ -1410,6 +1462,13 @@ function App() {
     }));
   };
 
+  const updateServiceRequestForm = (field: keyof ServiceRequestFormState, value: string) => {
+    setServiceRequestForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }));
+  };
+
   const updateLoginForm = (field: keyof LoginFormState, value: string) => {
     setLoginForm((currentForm) => ({
       ...currentForm,
@@ -1619,11 +1678,6 @@ function App() {
       }
 
       if (!response.ok || !data.settings) {
-        setAdminMessage('İletişim bilgileri kaydedilemedi. Alanları kontrol edin.');
-        return;
-      }
-
-      if (!response.ok || !data.settings) {
         setAdminMessage('İletişim bilgileri kaydedilemedi. Lütfen tekrar deneyin.');
         return;
       }
@@ -1636,6 +1690,53 @@ function App() {
       setAdminMessage('İletişim bilgileri kaydedilemedi. API bağlantısını kontrol edin.');
     } finally {
       setIsSavingContactSettings(false);
+    }
+  };
+
+  const submitServiceRequest = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSubmittingServiceRequest(true);
+    setServiceRequestMessage('');
+
+    const nameParts = serviceRequestForm.fullName.trim().split(/\s+/).filter(Boolean);
+    const firstName = nameParts[0] ?? '';
+    const lastName = nameParts.slice(1).join(' ') || '-';
+    const phoneSuffix = serviceRequestForm.phone.replace(/\D/g, '');
+    const payload = {
+      requestType: serviceRequestForm.requestType.trim(),
+      firstName,
+      lastName,
+      phone: `+90 ${phoneSuffix}`,
+      productKey: serviceRequestForm.productKey,
+      description: serviceRequestForm.description.trim(),
+    };
+
+    try {
+      const response = await fetch(apiUrl('/api/service-requests'), {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = (await response.json().catch(() => null)) as { ok?: boolean; emailSent?: boolean } | null;
+
+      if (!response.ok || !data?.ok) {
+        setServiceRequestMessage('Servis kaydı gönderilemedi. Lütfen bilgileri kontrol edip tekrar deneyin.');
+        return;
+      }
+
+      setServiceRequestForm(emptyServiceRequestForm);
+      setServiceRequestMessage(
+        data.emailSent
+          ? 'Servis kaydınız alındı. Ekibimize e-posta bildirimi gönderildi.'
+          : 'Servis kaydınız alındı. Ekibimiz en kısa sürede sizinle iletişime geçecek.',
+      );
+      setTimeout(() => setIsServiceRequestModalOpen(false), 1400);
+    } catch {
+      setServiceRequestMessage('Servis kaydı gönderilemedi. Lütfen bağlantınızı kontrol edip tekrar deneyin.');
+    } finally {
+      setIsSubmittingServiceRequest(false);
     }
   };
 
@@ -2506,11 +2607,18 @@ function App() {
                     <form className="adminProductForm adminFooterForm" onSubmit={saveContactSettings}>
                       {contactSettingFields.map((field) => (
                         <label
-                          className={field.key === 'address' || field.key === 'googleMapUrl' ? 'adminFormWide' : ''}
+                          className={
+                            field.key === 'address' ||
+                            field.key === 'googleMapUrl' ||
+                            field.key === 'appleMapUrl' ||
+                            field.key === 'footerDescription'
+                              ? 'adminFormWide'
+                              : ''
+                          }
                           key={field.key}
                         >
                           {field.label}
-                          {field.key === 'address' ? (
+                          {field.key === 'address' || field.key === 'footerDescription' ? (
                             <textarea
                               rows={3}
                               value={contactSettingsForm[field.key]}
@@ -3188,7 +3296,10 @@ function App() {
                 aria-labelledby="quote-modal-title"
                 exit={{ opacity: 0, scale: 0.2, y: -94, borderRadius: 999 }}
                 transition={{ type: 'spring', stiffness: 190, damping: 24 }}
-                onClick={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setIsServiceTypeMenuOpen(false);
+                }}
               >
               <button
                 className="quoteModalClose"
@@ -3264,6 +3375,144 @@ function App() {
             </motion.section>
           </motion.div>
         )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {isServiceRequestModalOpen && (
+            <motion.div
+              className="quoteModalOverlay serviceRequestModalOverlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22 }}
+              onClick={() => setIsServiceRequestModalOpen(false)}
+            >
+              <motion.section
+                className="quoteModal serviceRequestModal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="service-request-modal-title"
+                initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                transition={{ type: 'spring', stiffness: 190, damping: 24 }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  className="quoteModalClose"
+                  type="button"
+                  aria-label="Servis kaydı penceresini kapat"
+                  onClick={() => setIsServiceRequestModalOpen(false)}
+                >
+                  <X size={22} strokeWidth={2.2} />
+                </button>
+
+                <div className="quoteModalContent">
+                  <p className="quoteModalEyebrow">Servis Kaydı</p>
+                  <h2 id="service-request-modal-title">Servis talebinizi oluşturun</h2>
+                  <p>Bilgilerinizi bırakın, arıza veya bakım talebiniz servis ekibimize ulaşsın.</p>
+
+                  <form className="serviceRequestForm" onSubmit={submitServiceRequest}>
+                    <label className="serviceTypeField" onClick={(event) => event.stopPropagation()}>
+                      Talep Tipi
+                      <button
+                        className="serviceTypeSelect"
+                        type="button"
+                        aria-label="Talep tipi seç"
+                        onClick={() => setIsServiceTypeMenuOpen((isOpen) => !isOpen)}
+                      >
+                        <span className={`serviceTypeIcon ${selectedServiceRequestType.tone}`}>
+                          {selectedServiceRequestType.icon}
+                        </span>
+                        {selectedServiceRequestType.label}
+                        <ChevronDown size={17} strokeWidth={2.4} />
+                      </button>
+
+                      {isServiceTypeMenuOpen && (
+                        <div className="serviceTypeMenu">
+                          {serviceRequestTypes.map((requestType) => (
+                            <button
+                              className={serviceRequestForm.requestType === requestType.value ? 'active' : ''}
+                              type="button"
+                              key={requestType.value}
+                              onClick={() => {
+                                updateServiceRequestForm('requestType', requestType.value);
+                                setIsServiceTypeMenuOpen(false);
+                              }}
+                            >
+                              <span className={`serviceTypeIcon ${requestType.tone}`}>{requestType.icon}</span>
+                              {requestType.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </label>
+
+                    <label>
+                      İlgili Ürün
+                      <select
+                        value={serviceRequestForm.productKey}
+                        onChange={(event) => updateServiceRequestForm('productKey', event.target.value)}
+                      >
+                        <option value="">Seçiniz</option>
+                        {adminCategories.map((category) => (
+                          <option key={category.key} value={category.key}>
+                            {category.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label>
+                      Ad Soyad
+                      <input
+                        required
+                        value={serviceRequestForm.fullName}
+                        onChange={(event) => updateServiceRequestForm('fullName', event.target.value)}
+                        placeholder="Adınız Soyadınız"
+                      />
+                    </label>
+
+                    <label>
+                      Telefon
+                      <div className="servicePhoneInput">
+                        <span>+90</span>
+                        <input
+                          required
+                          type="tel"
+                          value={serviceRequestForm.phone}
+                          onChange={(event) => updateServiceRequestForm('phone', event.target.value.replace(/[^\d\s]/g, ''))}
+                          placeholder="5xx xxx xx xx"
+                        />
+                      </div>
+                    </label>
+
+                    <label className="serviceRequestWide">
+                      Açıklama
+                      <textarea
+                        rows={5}
+                        value={serviceRequestForm.description}
+                        onChange={(event) => updateServiceRequestForm('description', event.target.value)}
+                        placeholder="Arıza, talep veya bakım ihtiyacınızı kısaca anlatın."
+                      />
+                    </label>
+
+                    <div className="serviceRequestActions">
+                      {serviceRequestMessage && <p>{serviceRequestMessage}</p>}
+                      <div>
+                        <button type="button" className="secondary" onClick={() => setIsServiceRequestModalOpen(false)}>
+                          Kapat
+                        </button>
+                        <button type="submit" disabled={isSubmittingServiceRequest}>
+                          {isSubmittingServiceRequest ? 'Gönderiliyor...' : 'Gönder'}
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              </motion.section>
+            </motion.div>
+          )}
         </AnimatePresence>
       </LayoutGroup>
 
@@ -3472,48 +3721,15 @@ function App() {
 
       <section className="contactSection" id="iletisim">
         <div className="contactIntro">
-          <p className="eyebrow">İletişim</p>
-          <h2>Keşif, servis ve teklif için bize ulaşın</h2>
+          <p className="eyebrow">Servis Kaydı</p>
+          <h2>Arıza ve bakım taleplerinizi bize iletin</h2>
           <p>
-            {contactSettings.service || 'Satış, montaj ve teknik servis talepleriniz için hızlı dönüş yapalım.'}
+            Arıza, aksesuar talebi veya periyodik bakım ihtiyacınız için servis kaydı oluşturun. Talebiniz D1 sistemimize
+            kaydedilir ve servis ekibimize bildirilir.
           </p>
-        </div>
-
-        <div className="contactCards">
-          <a className="contactCard" href={phonePrimaryHref}>
-            <Phone size={22} strokeWidth={2.3} />
-            <span>Telefon 1</span>
-            <strong>{contactSettings.phonePrimary}</strong>
-          </a>
-          {contactSettings.phoneSecondary && (
-            <a className="contactCard" href={phoneSecondaryHref}>
-              <Phone size={22} strokeWidth={2.3} />
-              <span>Telefon 2</span>
-              <strong>{contactSettings.phoneSecondary}</strong>
-            </a>
-          )}
-          <a className="contactCard" href={whatsappHref} target="_blank" rel="noopener noreferrer">
-            <img src="https://cdn.simpleicons.org/whatsapp/25d366" alt="" />
-            <span>WhatsApp</span>
-            <strong>{contactSettings.whatsapp}</strong>
-          </a>
-          <a className="contactCard" href={emailHref}>
-            <Mail size={22} strokeWidth={2.3} />
-            <span>Mail</span>
-            <strong>{contactSettings.email}</strong>
-          </a>
-          <div className="contactCard">
-            <MapPin size={22} strokeWidth={2.3} />
-            <span>Adres</span>
-            <strong>{contactSettings.address}</strong>
-          </div>
-          {contactSettings.googleMapUrl && (
-            <a className="contactCard" href={contactSettings.googleMapUrl} target="_blank" rel="noopener noreferrer">
-              <MapPin size={22} strokeWidth={2.3} />
-              <span>Google Map</span>
-              <strong>Konumu Aç</strong>
-            </a>
-          )}
+          <button className="serviceRequestOpenButton" type="button" onClick={() => setIsServiceRequestModalOpen(true)}>
+            Servis Kaydı Oluştur
+          </button>
         </div>
       </section>
 
@@ -3522,10 +3738,7 @@ function App() {
           <a className="footerLogo" href="/" aria-label="HHS Otomatik Kapı ana sayfa">
             <img src="/apple-touch-icon.png" alt="HHS Otomatik Kapı" />
           </a>
-          <p>
-            Otomatik kapı, bariyer ve geçiş kontrol sistemlerinde keşif, satış,
-            montaj ve teknik destek.
-          </p>
+          <p>{contactSettings.footerDescription}</p>
         </div>
 
         <div className="footerColumn">
@@ -3572,13 +3785,35 @@ function App() {
               {contactSettings.address}
             </span>
           )}
-          {contactSettings.googleMapUrl && (
-            <a className="footerContactLink" href={contactSettings.googleMapUrl} target="_blank" rel="noopener noreferrer">
-              <span>
-                <MapPin size={15} strokeWidth={2.4} />
-              </span>
-              Google Harita
-            </a>
+          {(contactSettings.googleMapUrl || contactSettings.appleMapUrl) && (
+            <div className="footerMapLinks">
+              {contactSettings.googleMapUrl && (
+                <a
+                  className="footerContactLink"
+                  href={contactSettings.googleMapUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <span>
+                    <MapPin size={15} strokeWidth={2.4} />
+                  </span>
+                  Google Harita
+                </a>
+              )}
+              {contactSettings.appleMapUrl && (
+                <a
+                  className="footerContactLink"
+                  href={contactSettings.appleMapUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <span>
+                    <MapPin size={15} strokeWidth={2.4} />
+                  </span>
+                  Apple Harita
+                </a>
+              )}
+            </div>
           )}
         </div>
 
