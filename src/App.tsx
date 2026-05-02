@@ -1623,6 +1623,11 @@ function App() {
         return;
       }
 
+      if (!response.ok || !data.settings) {
+        setAdminMessage('İletişim bilgileri kaydedilemedi. Lütfen tekrar deneyin.');
+        return;
+      }
+
       setContactSettings(data.settings);
       setContactSettingsForm(data.settings);
       setAdminMessage('İletişim bilgileri güncellendi.');
@@ -3525,16 +3530,53 @@ function App() {
 
         <div className="footerColumn">
           <h2>İletişim</h2>
-          <a href={phonePrimaryHref}>{contactSettings.phonePrimary}</a>
-          {contactSettings.phoneSecondary && <a href={phoneSecondaryHref}>{contactSettings.phoneSecondary}</a>}
-          <a href={whatsappHref} target="_blank" rel="noopener noreferrer">
-            WhatsApp: {contactSettings.whatsapp}
+          <a className="footerContactLink" href={phonePrimaryHref}>
+            <span>
+              <Phone size={15} strokeWidth={2.4} />
+            </span>
+            {contactSettings.phonePrimary}
           </a>
-          <a href={emailHref}>{contactSettings.email}</a>
-          <span>{contactSettings.service}</span>
-          {contactSettings.address && <span>{contactSettings.address}</span>}
+          {contactSettings.phoneSecondary && (
+            <a className="footerContactLink" href={phoneSecondaryHref}>
+              <span>
+                <Phone size={15} strokeWidth={2.4} />
+              </span>
+              {contactSettings.phoneSecondary}
+            </a>
+          )}
+          <a className="footerContactLink" href={whatsappHref} target="_blank" rel="noopener noreferrer">
+            <span>
+              <img src="https://cdn.simpleicons.org/whatsapp/25d366" alt="" />
+            </span>
+            {contactSettings.whatsapp}
+          </a>
+          <a className="footerContactLink" href={emailHref}>
+            <span>
+              <Mail size={15} strokeWidth={2.4} />
+            </span>
+            {contactSettings.email}
+          </a>
+          {contactSettings.service && (
+            <span className="footerContactLink">
+              <span>
+                <Settings size={15} strokeWidth={2.4} />
+              </span>
+              {contactSettings.service}
+            </span>
+          )}
+          {contactSettings.address && (
+            <span className="footerContactLink">
+              <span>
+                <MapPin size={15} strokeWidth={2.4} />
+              </span>
+              {contactSettings.address}
+            </span>
+          )}
           {contactSettings.googleMapUrl && (
-            <a href={contactSettings.googleMapUrl} target="_blank" rel="noopener noreferrer">
+            <a className="footerContactLink" href={contactSettings.googleMapUrl} target="_blank" rel="noopener noreferrer">
+              <span>
+                <MapPin size={15} strokeWidth={2.4} />
+              </span>
               Google Harita
             </a>
           )}

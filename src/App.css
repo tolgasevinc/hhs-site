@@ -2499,6 +2499,37 @@ a.contactCard:hover {
   color: var(--color-orange);
 }
 
+.footerContactLink {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  line-height: 1.35;
+}
+
+.footerContactLink > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.footerContactLink img {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+}
+
+.footerContactLink:hover > span:first-child {
+  border-color: rgba(255, 120, 42, 0.48);
+  background: rgba(255, 120, 42, 0.16);
+}
+
 .footerSocialLinks {
   display: grid;
   gap: 10px;

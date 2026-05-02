@@ -809,10 +809,30 @@ const mapContactSettings = (settings: ContactSettingsRow): ContactSettingsInput 
   googleMapUrl: settings.google_map_url,
 });
 
+const ensureContactSettingsTable = async (db: D1Database) => {
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS contact_settings (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        phone_primary TEXT NOT NULL DEFAULT '',
+        phone_secondary TEXT NOT NULL DEFAULT '',
+        whatsapp TEXT NOT NULL DEFAULT '',
+        service TEXT NOT NULL DEFAULT '',
+        email TEXT NOT NULL DEFAULT '',
+        address TEXT NOT NULL DEFAULT '',
+        google_map_url TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+    )
+    .run();
+};
+
 const getContactSettings = async (db: D1Database) => {
   let settings: ContactSettingsRow | null = null;
 
   try {
+    await ensureContactSettingsTable(db);
     settings = await db
       .prepare(
         `SELECT id, phone_primary, phone_secondary, whatsapp, service, email, address, google_map_url
@@ -829,6 +849,8 @@ const getContactSettings = async (db: D1Database) => {
 };
 
 const upsertContactSettings = async (db: D1Database, settings: ContactSettingsInput) => {
+  await ensureContactSettingsTable(db);
+
   await db
     .prepare(
       `INSERT INTO contact_settings (
