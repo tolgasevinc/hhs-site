@@ -1,0 +1,3 @@
+ALTER TABLE quote_questions ADD COLUMN max_length INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE quote_questions ADD COLUMN decimal_places INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE quote_questions ADD COLUMN is_required INTEGER NOT NULL DEFAULT 0;

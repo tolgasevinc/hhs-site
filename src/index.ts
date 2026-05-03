@@ -49,6 +49,28 @@ type SocialLinkInput = {
   isActive?: boolean;
 };
 
+type QuoteQuestionInput = {
+  id?: string;
+  categoryKey: string;
+  productKey: string;
+  question: string;
+  description?: string;
+  answerType: 'text' | 'single' | 'multiple' | 'number';
+  options?: string[];
+  defaultValue?: string;
+  maxLength?: number;
+  decimalPlaces?: number;
+  isRequired?: boolean;
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
+type QuoteQuestionListInput = {
+  categoryKey: string;
+  productKey: string;
+  questions: QuoteQuestionInput[];
+};
+
 type ContactSettingsInput = {
   phonePrimary: string;
   phoneSecondary: string;
@@ -61,6 +83,17 @@ type ContactSettingsInput = {
   footerDescription: string;
 };
 
+type WpSourceSettingsInput = {
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password?: string;
+  tablePrefix: string;
+  oldSiteUrl: string;
+  includeDrafts?: boolean;
+};
+
 type ServiceRequestInput = {
   requestType: string;
   firstName: string;
@@ -68,6 +101,34 @@ type ServiceRequestInput = {
   phone: string;
   productKey?: string;
   description?: string;
+};
+
+type BlogPostInput = {
+  key: string;
+  title: string;
+  summary: string;
+  targetKeyword: string;
+  content: string;
+  slug: string;
+  metaTitle: string;
+  metaKeywords: string;
+  metaDescription: string;
+  image?: string;
+  imageAlt?: string;
+  oldUrl?: string;
+  seoScore?: number;
+  status?: 'draft' | 'published';
+  publishedAt?: string;
+  categories?: string[];
+  tags?: string[];
+};
+
+type BlogCategoryInput = {
+  key: string;
+  title: string;
+  slug: string;
+  description?: string;
+  sortOrder?: number;
 };
 
 type ServiceRequestRecord = ServiceRequestInput & {
@@ -120,10 +181,34 @@ type AssetReferenceRow = {
   label: string;
 };
 
+type AssetUrlRow = {
+  image_url?: string | null;
+  image_square_url?: string | null;
+  image_horizontal_url?: string | null;
+  image_vertical_url?: string | null;
+  avatar_url?: string | null;
+};
+
 type SocialLinkRow = {
   platform: string;
   label: string;
   url: string;
+  sort_order: number;
+  is_active: number;
+};
+
+type QuoteQuestionRow = {
+  id: string;
+  category_key: string;
+  product_key: string | null;
+  question: string;
+  description: string;
+  answer_type: string;
+  options_json: string;
+  default_value: string;
+  max_length: number;
+  decimal_places: number;
+  is_required: number;
   sort_order: number;
   is_active: number;
 };
@@ -139,6 +224,21 @@ type ContactSettingsRow = {
   google_map_url: string;
   apple_map_url: string;
   footer_description: string;
+};
+
+type WpSourceSettingsRow = {
+  id: string;
+  host: string;
+  port: number;
+  database_name: string;
+  username: string;
+  password: string;
+  table_prefix: string;
+  old_site_url: string;
+  include_drafts: number;
+  last_test_at: string | null;
+  last_test_status: string;
+  last_test_message: string;
 };
 
 type AdminUserInput = {
@@ -189,6 +289,64 @@ type DatabaseSizeRow = {
   size: number | null;
 };
 
+type BlogPostRow = {
+  key: string;
+  title: string;
+  summary: string;
+  target_keyword: string;
+  content: string;
+  slug: string;
+  meta_title: string;
+  meta_keywords: string;
+  meta_description: string;
+  image_url: string;
+  image_alt: string;
+  old_url: string;
+  seo_score: number;
+  status: string;
+  published_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type BlogCategoryRow = {
+  key: string;
+  title: string;
+  slug: string;
+  description: string;
+  sort_order: number;
+};
+
+type BlogTagRow = {
+  key: string;
+  title: string;
+  slug: string;
+};
+
+type BlogPostCategoryRow = {
+  post_key: string;
+  category_key: string;
+  title: string;
+  slug: string;
+};
+
+type BlogPostTagRow = {
+  post_key: string;
+  tag_key: string;
+  title: string;
+  slug: string;
+};
+
+type BlogRedirectRow = {
+  slug: string;
+  status_code: number;
+};
+
+type MysqlConnection = {
+  query: (sql: string) => Promise<[unknown, unknown]>;
+  end: () => Promise<void>;
+};
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
@@ -237,6 +395,14 @@ const getSocialLinkRequestBody = async (request: Request) => {
   }
 };
 
+const getQuoteQuestionListRequestBody = async (request: Request) => {
+  try {
+    return (await request.json()) as QuoteQuestionListInput;
+  } catch {
+    return null;
+  }
+};
+
 const getContactSettingsRequestBody = async (request: Request) => {
   try {
     return (await request.json()) as ContactSettingsInput;
@@ -245,9 +411,33 @@ const getContactSettingsRequestBody = async (request: Request) => {
   }
 };
 
+const getWpSourceSettingsRequestBody = async (request: Request) => {
+  try {
+    return (await request.json()) as WpSourceSettingsInput;
+  } catch {
+    return null;
+  }
+};
+
 const getServiceRequestBody = async (request: Request) => {
   try {
     return (await request.json()) as ServiceRequestInput;
+  } catch {
+    return null;
+  }
+};
+
+const getBlogPostRequestBody = async (request: Request) => {
+  try {
+    return (await request.json()) as BlogPostInput;
+  } catch {
+    return null;
+  }
+};
+
+const getBlogCategoryRequestBody = async (request: Request) => {
+  try {
+    return (await request.json()) as BlogCategoryInput;
   } catch {
     return null;
   }
@@ -273,8 +463,59 @@ const isValidSocialLinkInput = (body: SocialLinkInput | null): body is SocialLin
   return Boolean(body?.platform && body.label);
 };
 
+const isValidQuoteQuestionListInput = (body: QuoteQuestionListInput | null): body is QuoteQuestionListInput => {
+  return Boolean(
+    body?.categoryKey &&
+      body.productKey &&
+      Array.isArray(body.questions) &&
+      body.questions.every(
+        (question) =>
+          question.question?.trim() &&
+          ['text', 'single', 'multiple', 'number'].includes(question.answerType) &&
+          ((question.answerType !== 'single' && question.answerType !== 'multiple') ||
+            (question.options?.length ?? 0) > 0) &&
+          (question.maxLength === undefined ||
+            (Number.isInteger(question.maxLength) && question.maxLength >= 0)) &&
+          (question.decimalPlaces === undefined ||
+            (Number.isInteger(question.decimalPlaces) &&
+              question.decimalPlaces >= 0 &&
+              question.decimalPlaces <= 6)),
+      ),
+  );
+};
+
 const isValidContactSettingsInput = (body: ContactSettingsInput | null): body is ContactSettingsInput => {
   return Boolean(body && typeof body.phonePrimary === 'string' && typeof body.email === 'string');
+};
+
+const getWpSourceSettingsValidationErrors = (body: WpSourceSettingsInput | null) => {
+  const errors: string[] = [];
+
+  if (!body) {
+    return ['payload'];
+  }
+
+  if (typeof body.host !== 'string' || !body.host.trim()) {
+    errors.push('host');
+  }
+
+  if (typeof body.database !== 'string' || !body.database.trim()) {
+    errors.push('database');
+  }
+
+  if (typeof body.username !== 'string' || !body.username.trim()) {
+    errors.push('username');
+  }
+
+  if (!Number.isInteger(Number(body.port)) || Number(body.port) <= 0 || Number(body.port) > 65535) {
+    errors.push('port');
+  }
+
+  if (!/^[A-Za-z0-9_]*$/.test(body.tablePrefix ?? '')) {
+    errors.push('tablePrefix');
+  }
+
+  return errors;
 };
 
 const isValidServiceRequestInput = (body: ServiceRequestInput | null): body is ServiceRequestInput => {
@@ -289,6 +530,24 @@ const isValidServiceRequestInput = (body: ServiceRequestInput | null): body is S
       typeof body.phone === 'string' &&
       body.phone.trim(),
   );
+};
+
+const isValidBlogPostInput = (body: BlogPostInput | null): body is BlogPostInput => {
+  return Boolean(
+    body?.key &&
+      body.title &&
+      body.summary &&
+      body.targetKeyword &&
+      body.content &&
+      body.slug &&
+      body.metaTitle &&
+      body.metaKeywords &&
+      body.metaDescription,
+  );
+};
+
+const isValidBlogCategoryInput = (body: BlogCategoryInput | null): body is BlogCategoryInput => {
+  return Boolean(body?.key && body.title && body.slug);
 };
 
 const isValidCreateAdminUserInput = (body: AdminUserInput | null): body is AdminUserInput => {
@@ -307,6 +566,76 @@ const getProductSlugOwner = async (db: D1Database, slug: string) => {
   return db.prepare('SELECT key FROM products WHERE slug = ? LIMIT 1').bind(slug).first<{ key: string }>();
 };
 
+const extractAssetKeyFromUrl = (url: string | null | undefined) => {
+  if (!url) {
+    return null;
+  }
+
+  const assetMarker = '/api/assets/';
+  const markerIndex = url.indexOf(assetMarker);
+  const key = markerIndex >= 0 ? url.slice(markerIndex + assetMarker.length) : url;
+  const cleanKey = key.split(/[?#]/)[0]?.trim();
+
+  if (!cleanKey || !cleanKey.match(/\.(webp|png|jpe?g|gif)$/i)) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(cleanKey);
+  } catch {
+    return cleanKey;
+  }
+};
+
+const getUsedAssetKeys = async (db: D1Database) => {
+  const queries = [
+    db
+      .prepare(
+        `SELECT image_url, image_square_url, image_horizontal_url, image_vertical_url
+        FROM products`,
+      )
+      .all<AssetUrlRow>(),
+    db
+      .prepare(
+        `SELECT image_url, image_square_url, image_horizontal_url, image_vertical_url
+        FROM product_categories`,
+      )
+      .all<AssetUrlRow>(),
+    db.prepare('SELECT image_url FROM blog_posts').all<AssetUrlRow>(),
+    db.prepare('SELECT avatar_url FROM admin_users').all<AssetUrlRow>(),
+  ];
+  const results = await Promise.all(
+    queries.map((query) =>
+      query.catch(() => ({
+        results: [],
+        success: false,
+        meta: {},
+      })),
+    ),
+  );
+  const usedKeys = new Set<string>();
+
+  results.forEach((result) => {
+    result.results.forEach((row) => {
+      [
+        row.image_url,
+        row.image_square_url,
+        row.image_horizontal_url,
+        row.image_vertical_url,
+        row.avatar_url,
+      ].forEach((assetUrl) => {
+        const assetKey = extractAssetKeyFromUrl(assetUrl);
+
+        if (assetKey) {
+          usedKeys.add(assetKey);
+        }
+      });
+    });
+  });
+
+  return usedKeys;
+};
+
 const getAssetReferences = async (db: D1Database, objectKey: string) => {
   const assetPath = `/api/assets/${objectKey}`;
   const likeValue = `%${assetPath}`;
@@ -323,11 +652,43 @@ const getAssetReferences = async (db: D1Database, objectKey: string) => {
         WHERE image_url LIKE ? OR image_square_url LIKE ? OR image_horizontal_url LIKE ? OR image_vertical_url LIKE ?`,
       )
       .bind(likeValue, likeValue, likeValue, likeValue),
+    db.prepare('SELECT title AS label FROM blog_posts WHERE image_url LIKE ?').bind(likeValue),
     db.prepare('SELECT display_name AS label FROM admin_users WHERE avatar_url LIKE ?').bind(likeValue),
   ];
-  const results = await Promise.all(queries.map((query) => query.all<AssetReferenceRow>()));
+  const results = await Promise.all(
+    queries.map((query) =>
+      query.all<AssetReferenceRow>().catch(() => ({
+        results: [],
+        success: false,
+        meta: {},
+      })),
+    ),
+  );
 
   return results.flatMap((result) => result.results.map((row) => row.label));
+};
+
+const listAssetsWithUsage = async (db: D1Database, assetsBucket: R2Bucket, onlyUnused = false) => {
+  const listedAssets = await assetsBucket.list({ limit: 1000 });
+  const imageAssets = listedAssets.objects.filter((asset) => asset.key.match(/\.(webp|png|jpe?g|gif)$/i));
+  const usedAssetKeys = await getUsedAssetKeys(db);
+  const assetsWithReferences = await Promise.all(
+    imageAssets.map(async (asset) => {
+      const isUsed = usedAssetKeys.has(asset.key);
+      const references = isUsed ? await getAssetReferences(db, asset.key) : [];
+
+      return {
+        key: asset.key,
+        url: `/api/assets/${asset.key}`,
+        size: asset.size,
+        uploaded: asset.uploaded?.toISOString() ?? null,
+        references,
+        isUsed,
+      };
+    }),
+  );
+
+  return onlyUnused ? assetsWithReferences.filter((asset) => !asset.isUsed) : assetsWithReferences;
 };
 
 const toSafeAssetName = (name: string) => {
@@ -342,7 +703,7 @@ const toSafeAssetName = (name: string) => {
 const textEncoder = new TextEncoder();
 const adminSessionDurationMs = 1000 * 60 * 60 * 12;
 const passwordHashIterations = 100_000;
-const adminModules = ['products', 'users', 'settings', 'database'] as const;
+const adminModules = ['products', 'blog', 'users', 'settings', 'database'] as const;
 const defaultAdminModules = [...adminModules];
 
 const bufferToHex = (buffer: ArrayBuffer) =>
@@ -832,6 +1193,137 @@ const upsertSocialLink = async (db: D1Database, link: SocialLinkInput) => {
   return listSocialLinks(db);
 };
 
+const mapQuoteQuestion = (question: QuoteQuestionRow) => {
+  try {
+    const parsedOptions = JSON.parse(question.options_json) as unknown;
+    const options = Array.isArray(parsedOptions) ? parsedOptions.filter((option): option is string => typeof option === 'string') : [];
+
+    return {
+      id: question.id,
+      categoryKey: question.category_key,
+      productKey: question.product_key ?? '',
+      question: question.question,
+      description: question.description ?? '',
+      answerType: question.answer_type,
+      options,
+      defaultValue: question.default_value ?? '',
+      maxLength: question.max_length ?? 0,
+      decimalPlaces: question.decimal_places ?? 0,
+      isRequired: Boolean(question.is_required),
+      sortOrder: question.sort_order,
+      isActive: Boolean(question.is_active),
+    };
+  } catch {
+    return {
+      id: question.id,
+      categoryKey: question.category_key,
+      productKey: question.product_key ?? '',
+      question: question.question,
+      description: question.description ?? '',
+      answerType: question.answer_type,
+      options: [],
+      defaultValue: question.default_value ?? '',
+      maxLength: question.max_length ?? 0,
+      decimalPlaces: question.decimal_places ?? 0,
+      isRequired: Boolean(question.is_required),
+      sortOrder: question.sort_order,
+      isActive: Boolean(question.is_active),
+    };
+  }
+};
+
+const listQuoteQuestions = async (db: D1Database, categoryKey?: string, productKey?: string, includeInactive = false) => {
+  const whereClauses = [];
+  const bindValues: (string | number)[] = [];
+
+  if (categoryKey) {
+    whereClauses.push('category_key = ?');
+    bindValues.push(categoryKey);
+  }
+
+  if (productKey) {
+    whereClauses.push('product_key = ?');
+    bindValues.push(productKey);
+  }
+
+  if (!includeInactive) {
+    whereClauses.push('is_active = 1');
+  }
+
+  const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+  const questions = await db
+    .prepare(
+      `SELECT id, category_key, product_key, question, description, answer_type, options_json, default_value, max_length, decimal_places, is_required, sort_order, is_active
+      FROM quote_questions
+      ${whereSql}
+      ORDER BY category_key ASC, product_key ASC, sort_order ASC, question ASC`,
+    )
+    .bind(...bindValues)
+    .all<QuoteQuestionRow>();
+
+  return questions.results.map(mapQuoteQuestion);
+};
+
+const replaceQuoteQuestions = async (db: D1Database, input: QuoteQuestionListInput) => {
+  const activeQuestions = input.questions.map((question, index) => ({
+    id: question.id?.trim() || `quote_${input.categoryKey}_${input.productKey}_${crypto.randomUUID()}`,
+    categoryKey: input.categoryKey,
+    productKey: input.productKey,
+    question: question.question.trim(),
+    description: question.description?.trim() ?? '',
+    answerType: question.answerType,
+    options: (question.options ?? []).map((option) => option.trim()).filter(Boolean),
+    defaultValue: question.defaultValue?.trim() ?? '',
+    maxLength: question.answerType === 'text' ? Math.max(0, Math.trunc(question.maxLength ?? 0)) : 0,
+    decimalPlaces:
+      question.answerType === 'number' ? Math.min(6, Math.max(0, Math.trunc(question.decimalPlaces ?? 0))) : 0,
+    isRequired: question.isRequired === true,
+    sortOrder: question.sortOrder ?? index + 1,
+    isActive: question.isActive !== false,
+  }));
+
+  await db.batch([
+    db.prepare('DELETE FROM quote_questions WHERE category_key = ? AND product_key = ?').bind(input.categoryKey, input.productKey),
+    ...activeQuestions.map((question) =>
+      db
+        .prepare(
+          `INSERT INTO quote_questions (
+            id,
+            category_key,
+            product_key,
+            question,
+            description,
+            answer_type,
+            options_json,
+            default_value,
+            max_length,
+            decimal_places,
+            is_required,
+            sort_order,
+            is_active
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          question.id,
+          question.categoryKey,
+          question.productKey,
+          question.question,
+          question.description,
+          question.answerType,
+          JSON.stringify(question.options),
+          question.defaultValue,
+          question.maxLength,
+          question.decimalPlaces,
+          question.isRequired ? 1 : 0,
+          question.sortOrder,
+          question.isActive ? 1 : 0,
+        ),
+    ),
+  ]);
+
+  return listQuoteQuestions(db, input.categoryKey, input.productKey, true);
+};
+
 const defaultContactSettings: ContactSettingsInput = {
   phonePrimary: '+90 264 291 00 60',
   phoneSecondary: '+90 542 614 29 29',
@@ -902,11 +1394,9 @@ const ensureContactSettingsTable = async (db: D1Database) => {
 };
 
 const getContactSettings = async (db: D1Database) => {
-  let settings: ContactSettingsRow | null = null;
-
   try {
     await ensureContactSettingsTable(db);
-    settings = await db
+    const settings = await db
       .prepare(
         `SELECT id, phone_primary, phone_secondary, whatsapp, service, email, address, google_map_url, apple_map_url, footer_description
         FROM contact_settings
@@ -914,11 +1404,11 @@ const getContactSettings = async (db: D1Database) => {
         LIMIT 1`,
       )
       .first<ContactSettingsRow>();
+
+    return settings ? mapContactSettings(settings) : defaultContactSettings;
   } catch {
     return defaultContactSettings;
   }
-
-  return settings ? mapContactSettings(settings) : defaultContactSettings;
 };
 
 const upsertContactSettings = async (db: D1Database, settings: ContactSettingsInput) => {
@@ -964,6 +1454,196 @@ const upsertContactSettings = async (db: D1Database, settings: ContactSettingsIn
     .run();
 
   return getContactSettings(db);
+};
+
+const defaultWpSourceSettings = {
+  host: '',
+  port: 3306,
+  database: '',
+  username: '',
+  tablePrefix: 'wp_',
+  oldSiteUrl: '',
+  includeDrafts: false,
+  hasPassword: false,
+  lastTestAt: '',
+  lastTestStatus: '',
+  lastTestMessage: '',
+};
+
+const mapWpSourceSettings = (settings: WpSourceSettingsRow) => ({
+  host: settings.host,
+  port: settings.port,
+  database: settings.database_name,
+  username: settings.username,
+  password: '',
+  tablePrefix: settings.table_prefix,
+  oldSiteUrl: settings.old_site_url,
+  includeDrafts: Boolean(settings.include_drafts),
+  hasPassword: Boolean(settings.password),
+  lastTestAt: settings.last_test_at ?? '',
+  lastTestStatus: settings.last_test_status,
+  lastTestMessage: settings.last_test_message,
+});
+
+const ensureWpSourceSettingsTable = async (db: D1Database) => {
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS wp_source_settings (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        host TEXT NOT NULL DEFAULT '',
+        port INTEGER NOT NULL DEFAULT 3306,
+        database_name TEXT NOT NULL DEFAULT '',
+        username TEXT NOT NULL DEFAULT '',
+        password TEXT NOT NULL DEFAULT '',
+        table_prefix TEXT NOT NULL DEFAULT 'wp_',
+        old_site_url TEXT NOT NULL DEFAULT '',
+        include_drafts INTEGER NOT NULL DEFAULT 0,
+        last_test_at TEXT,
+        last_test_status TEXT NOT NULL DEFAULT '',
+        last_test_message TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+    )
+    .run();
+};
+
+const getWpSourceSettingsRow = async (db: D1Database) => {
+  await ensureWpSourceSettingsTable(db);
+  return db
+    .prepare(
+      `SELECT id, host, port, database_name, username, password, table_prefix, old_site_url, include_drafts,
+        last_test_at, last_test_status, last_test_message
+      FROM wp_source_settings
+      WHERE id = 'default'
+      LIMIT 1`,
+    )
+    .first<WpSourceSettingsRow>();
+};
+
+const getWpSourceSettings = async (db: D1Database) => {
+  const settings = await getWpSourceSettingsRow(db);
+  return settings ? mapWpSourceSettings(settings) : defaultWpSourceSettings;
+};
+
+const upsertWpSourceSettings = async (db: D1Database, settings: WpSourceSettingsInput) => {
+  await ensureWpSourceSettingsTable(db);
+  const existing = await getWpSourceSettingsRow(db);
+  const password = settings.password?.trim() || existing?.password || '';
+
+  await db
+    .prepare(
+      `INSERT INTO wp_source_settings (
+        id,
+        host,
+        port,
+        database_name,
+        username,
+        password,
+        table_prefix,
+        old_site_url,
+        include_drafts
+      ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        host = excluded.host,
+        port = excluded.port,
+        database_name = excluded.database_name,
+        username = excluded.username,
+        password = excluded.password,
+        table_prefix = excluded.table_prefix,
+        old_site_url = excluded.old_site_url,
+        include_drafts = excluded.include_drafts,
+        updated_at = CURRENT_TIMESTAMP`,
+    )
+    .bind(
+      settings.host.trim(),
+      Number(settings.port),
+      settings.database.trim(),
+      settings.username.trim(),
+      password,
+      settings.tablePrefix.trim() || 'wp_',
+      settings.oldSiteUrl.trim(),
+      settings.includeDrafts ? 1 : 0,
+    )
+    .run();
+
+  return getWpSourceSettings(db);
+};
+
+const quoteMysqlIdentifier = (value: string) => `\`${value.replaceAll('`', '``')}\``;
+
+const testWpSourceSettings = async (db: D1Database, settings: WpSourceSettingsInput) => {
+  const existing = await getWpSourceSettingsRow(db);
+  const password = settings.password?.trim() || existing?.password || '';
+  const tablePrefix = settings.tablePrefix.trim() || 'wp_';
+
+  try {
+    const mysql = await import('mysql2/promise');
+    const connection = (await mysql.createConnection({
+      host: settings.host.trim(),
+      port: Number(settings.port),
+      user: settings.username.trim(),
+      password,
+      database: settings.database.trim(),
+      connectTimeout: 10000,
+    })) as unknown as MysqlConnection;
+    const [tableRows] = await connection.query('SHOW TABLES');
+    const tableNames = (tableRows as Record<string, string>[])
+      .map((row) => Object.values(row)[0])
+      .filter((value): value is string => typeof value === 'string');
+    const postsTable = quoteMysqlIdentifier(`${tablePrefix}posts`);
+    const postmetaTable = quoteMysqlIdentifier(`${tablePrefix}postmeta`);
+    const [[postCountRow], [seoMetaRows]] = await Promise.all([
+      connection.query(`SELECT COUNT(*) AS total FROM ${postsTable} WHERE post_type = 'post'`),
+      connection.query(
+        `SELECT meta_key, COUNT(*) AS total
+        FROM ${postmetaTable}
+        WHERE meta_key LIKE '%yoast%' OR meta_key LIKE 'rank_math%' OR meta_key LIKE '_aioseo%'
+        GROUP BY meta_key
+        ORDER BY total DESC
+        LIMIT 20`,
+      ),
+    ]);
+
+    await connection.end();
+
+    await db
+      .prepare(
+        `UPDATE wp_source_settings
+        SET last_test_at = CURRENT_TIMESTAMP, last_test_status = 'success', last_test_message = ?
+        WHERE id = 'default'`,
+      )
+      .bind(`${tableNames.length} tablo bulundu.`)
+      .run();
+
+    return {
+      connected: true,
+      tables: tableNames.slice(0, 100),
+      totalTables: tableNames.length,
+      postCount: Number((postCountRow as { total: number }[])[0]?.total ?? 0),
+      seoMetaKeys: seoMetaRows as { meta_key: string; total: number }[],
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'MySQL bağlantısı test edilemedi.';
+
+    await db
+      .prepare(
+        `UPDATE wp_source_settings
+        SET last_test_at = CURRENT_TIMESTAMP, last_test_status = 'error', last_test_message = ?
+        WHERE id = 'default'`,
+      )
+      .bind(message)
+      .run();
+
+    return {
+      connected: false,
+      tables: [],
+      totalTables: 0,
+      postCount: 0,
+      seoMetaKeys: [],
+      error: message,
+    };
+  }
 };
 
 const ensureServiceRequestsTable = async (db: D1Database) => {
@@ -1342,6 +2022,269 @@ const updateProduct = async (db: D1Database, key: string, product: ProductInput)
   return getProduct(db, key);
 };
 
+const mapBlogPosts = (
+  posts: BlogPostRow[],
+  categories: BlogPostCategoryRow[],
+  tags: BlogPostTagRow[],
+) =>
+  posts.map((post) => ({
+    key: post.key,
+    title: post.title,
+    summary: post.summary,
+    targetKeyword: post.target_keyword,
+    content: post.content,
+    slug: post.slug,
+    metaTitle: post.meta_title,
+    metaKeywords: post.meta_keywords,
+    metaDescription: post.meta_description,
+    image: post.image_url,
+    imageAlt: post.image_alt,
+    oldUrl: post.old_url,
+    seoScore: post.seo_score,
+    status: post.status,
+    publishedAt: post.published_at,
+    createdAt: post.created_at,
+    updatedAt: post.updated_at,
+    categories: categories
+      .filter((category) => category.post_key === post.key)
+      .map((category) => ({
+        key: category.category_key,
+        title: category.title,
+        slug: category.slug,
+      })),
+    tags: tags
+      .filter((tag) => tag.post_key === post.key)
+      .map((tag) => ({
+        key: tag.tag_key,
+        title: tag.title,
+        slug: tag.slug,
+      })),
+  }));
+
+const listBlogCategories = async (db: D1Database) => {
+  const categories = await db
+    .prepare('SELECT key, title, slug, description, sort_order FROM blog_categories ORDER BY sort_order ASC, title ASC')
+    .all<BlogCategoryRow>();
+
+  return categories.results.map((category) => ({
+    key: category.key,
+    title: category.title,
+    slug: category.slug,
+    description: category.description,
+    sortOrder: category.sort_order,
+  }));
+};
+
+const listBlogTags = async (db: D1Database) => {
+  const tags = await db.prepare('SELECT key, title, slug FROM blog_tags ORDER BY title ASC').all<BlogTagRow>();
+  return tags.results.map((tag) => ({ key: tag.key, title: tag.title, slug: tag.slug }));
+};
+
+const listBlogPosts = async (db: D1Database, includeDrafts = false, limit = 100) => {
+  const posts = await db
+    .prepare(
+      `SELECT key, title, summary, target_keyword, content, slug, meta_title, meta_keywords, meta_description,
+        image_url, image_alt, old_url, seo_score, status, published_at, created_at, updated_at
+      FROM blog_posts
+      ${includeDrafts ? '' : "WHERE status = 'published'"}
+      ORDER BY COALESCE(NULLIF(published_at, ''), created_at) DESC
+      LIMIT ?`,
+    )
+    .bind(limit)
+    .all<BlogPostRow>();
+  const postKeys = posts.results.map((post) => post.key);
+
+  if (!postKeys.length) {
+    return [];
+  }
+
+  const placeholders = postKeys.map(() => '?').join(',');
+  const categories = await db
+    .prepare(
+      `SELECT pc.post_key, c.key AS category_key, c.title, c.slug
+      FROM blog_post_categories pc
+      JOIN blog_categories c ON c.key = pc.category_key
+      WHERE pc.post_key IN (${placeholders})
+      ORDER BY c.sort_order ASC, c.title ASC`,
+    )
+    .bind(...postKeys)
+    .all<BlogPostCategoryRow>();
+  const tags = await db
+    .prepare(
+      `SELECT pt.post_key, t.key AS tag_key, t.title, t.slug
+      FROM blog_post_tags pt
+      JOIN blog_tags t ON t.key = pt.tag_key
+      WHERE pt.post_key IN (${placeholders})
+      ORDER BY t.title ASC`,
+    )
+    .bind(...postKeys)
+    .all<BlogPostTagRow>();
+
+  return mapBlogPosts(posts.results, categories.results, tags.results);
+};
+
+const getBlogPostByKeyOrSlug = async (db: D1Database, value: string, includeDrafts = false) => {
+  const post = await db
+    .prepare(
+      `SELECT key, title, summary, target_keyword, content, slug, meta_title, meta_keywords, meta_description,
+        image_url, image_alt, old_url, seo_score, status, published_at, created_at, updated_at
+      FROM blog_posts
+      WHERE (key = ? OR slug = ?) ${includeDrafts ? '' : "AND status = 'published'"}
+      LIMIT 1`,
+    )
+    .bind(value, value)
+    .first<BlogPostRow>();
+
+  if (!post) {
+    return null;
+  }
+
+  const categories = await db
+    .prepare(
+      `SELECT pc.post_key, c.key AS category_key, c.title, c.slug
+      FROM blog_post_categories pc
+      JOIN blog_categories c ON c.key = pc.category_key
+      WHERE pc.post_key = ?`,
+    )
+    .bind(post.key)
+    .all<BlogPostCategoryRow>();
+  const tags = await db
+    .prepare(
+      `SELECT pt.post_key, t.key AS tag_key, t.title, t.slug
+      FROM blog_post_tags pt
+      JOIN blog_tags t ON t.key = pt.tag_key
+      WHERE pt.post_key = ?`,
+    )
+    .bind(post.key)
+    .all<BlogPostTagRow>();
+
+  return mapBlogPosts([post], categories.results, tags.results)[0];
+};
+
+const slugify = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ı/g, 'i')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+const ensureBlogTag = async (db: D1Database, titleOrKey: string) => {
+  const title = titleOrKey.trim();
+  const key = slugify(title) || toSafeAssetName(title) || crypto.randomUUID();
+
+  await db
+    .prepare('INSERT OR IGNORE INTO blog_tags (key, title, slug) VALUES (?, ?, ?)')
+    .bind(key, title, key)
+    .run();
+
+  return key;
+};
+
+const upsertBlogPost = async (db: D1Database, post: BlogPostInput, previousKey?: string) => {
+  const key = previousKey ?? post.key;
+  const categoryKeys = post.categories ?? [];
+  const tagKeys = await Promise.all((post.tags ?? []).filter(Boolean).map((tag) => ensureBlogTag(db, tag)));
+
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO blog_posts (
+          key, title, summary, target_keyword, content, slug, meta_title, meta_keywords, meta_description,
+          image_url, image_alt, old_url, seo_score, status, published_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+          title = excluded.title,
+          summary = excluded.summary,
+          target_keyword = excluded.target_keyword,
+          content = excluded.content,
+          slug = excluded.slug,
+          meta_title = excluded.meta_title,
+          meta_keywords = excluded.meta_keywords,
+          meta_description = excluded.meta_description,
+          image_url = excluded.image_url,
+          image_alt = excluded.image_alt,
+          old_url = excluded.old_url,
+          seo_score = excluded.seo_score,
+          status = excluded.status,
+          published_at = excluded.published_at,
+          updated_at = CURRENT_TIMESTAMP`,
+      )
+      .bind(
+        key,
+        post.title,
+        post.summary,
+        post.targetKeyword,
+        post.content,
+        post.slug,
+        post.metaTitle,
+        post.metaKeywords,
+        post.metaDescription,
+        post.image ?? '',
+        post.imageAlt ?? '',
+        post.oldUrl ?? '',
+        post.seoScore ?? 0,
+        post.status ?? 'draft',
+        post.publishedAt ?? '',
+      ),
+    db.prepare('DELETE FROM blog_post_categories WHERE post_key = ?').bind(key),
+    db.prepare('DELETE FROM blog_post_tags WHERE post_key = ?').bind(key),
+    db.prepare('DELETE FROM blog_redirects WHERE post_key = ?').bind(key),
+    ...categoryKeys.map((categoryKey) =>
+      db.prepare('INSERT OR IGNORE INTO blog_post_categories (post_key, category_key) VALUES (?, ?)').bind(key, categoryKey),
+    ),
+    ...tagKeys.map((tagKey) =>
+      db.prepare('INSERT OR IGNORE INTO blog_post_tags (post_key, tag_key) VALUES (?, ?)').bind(key, tagKey),
+    ),
+    ...(post.oldUrl
+      ? [
+          db
+            .prepare('INSERT OR REPLACE INTO blog_redirects (old_url, post_key, status_code) VALUES (?, ?, 301)')
+            .bind(post.oldUrl, key),
+        ]
+      : []),
+  ]);
+
+  return getBlogPostByKeyOrSlug(db, key, true);
+};
+
+const upsertBlogCategory = async (db: D1Database, category: BlogCategoryInput) => {
+  await db
+    .prepare(
+      `INSERT INTO blog_categories (key, title, slug, description, sort_order)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        title = excluded.title,
+        slug = excluded.slug,
+        description = excluded.description,
+        sort_order = excluded.sort_order,
+        updated_at = CURRENT_TIMESTAMP`,
+    )
+    .bind(category.key, category.title, category.slug, category.description ?? '', category.sortOrder ?? 0)
+    .run();
+
+  return listBlogCategories(db);
+};
+
+const getBlogRedirect = async (db: D1Database, value: string) => {
+  return db
+    .prepare(
+      `SELECT p.slug, r.status_code
+      FROM blog_redirects r
+      JOIN blog_posts p ON p.key = r.post_key
+      WHERE r.old_url = ? OR r.old_url LIKE ?
+      LIMIT 1`,
+    )
+    .bind(value, `%${value}`)
+    .first<BlogRedirectRow>();
+};
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -1514,27 +2457,34 @@ export default {
         return unauthorized();
       }
 
-      if (!hasAdminModule(admin, 'products')) {
+      if (!hasAdminModule(admin, 'products') && !hasAdminModule(admin, 'blog')) {
         return forbidden();
       }
 
-      const listedAssets = await env.ASSETS.list({ limit: 1000 });
-
-      return json({
-        ok: true,
-        assets: listedAssets.objects
-          .filter((asset) => asset.key.match(/\.(webp|png|jpe?g|gif)$/i))
-          .map((asset) => ({
-            key: asset.key,
-            url: `/api/assets/${asset.key}`,
-            size: asset.size,
-            uploaded: asset.uploaded?.toISOString() ?? null,
-          })),
-      });
+      try {
+        return json({
+          ok: true,
+          assets: await listAssetsWithUsage(env.DB, env.ASSETS, url.searchParams.get('unused') === '1'),
+        });
+      } catch (error) {
+        return json(
+          {
+            ok: false,
+            error: 'Assets could not be listed',
+            message: error instanceof Error ? error.message : 'Unknown asset list error',
+          },
+          { status: 500 },
+        );
+      }
     }
 
     if (
-      (url.pathname === '/api/assets/product-image' || url.pathname === '/api/assets/category-image') &&
+      (
+        url.pathname === '/api/assets/product-image' ||
+        url.pathname === '/api/assets/category-image' ||
+        url.pathname === '/api/assets/blog-image' ||
+        url.pathname === '/api/assets/page-image'
+      ) &&
       request.method === 'POST'
     ) {
       const admin = await authenticateAdmin(request, env.DB);
@@ -1543,7 +2493,7 @@ export default {
         return unauthorized();
       }
 
-      if (!hasAdminModule(admin, 'products')) {
+      if (!hasAdminModule(admin, 'products') && !hasAdminModule(admin, 'blog')) {
         return forbidden();
       }
 
@@ -1563,7 +2513,17 @@ export default {
       const safeName = toSafeAssetName(fileName) || 'product-image';
       const imageVariant = url.searchParams.get('variant') ?? 'original';
       const safeVariant = toSafeAssetName(imageVariant) || 'original';
-      const assetFolder = url.pathname.endsWith('/category-image') ? 'categories' : 'products';
+      const requestedFolder = url.searchParams.get('folder') ?? '';
+      const assetFolder =
+        ['urun', 'kategori', 'blog', 'sayfa'].includes(requestedFolder)
+          ? requestedFolder
+          : url.pathname.endsWith('/category-image')
+          ? 'kategori'
+          : url.pathname.endsWith('/blog-image')
+            ? 'blog'
+            : url.pathname.endsWith('/page-image')
+              ? 'sayfa'
+              : 'urun';
       const objectKey = `${assetFolder}/${safeVariant}/${Date.now()}-${crypto.randomUUID()}-${safeName}.webp`;
 
       await env.ASSETS.put(objectKey, imageBody, {
@@ -1609,7 +2569,7 @@ export default {
 
       const fileName = url.searchParams.get('name') ?? 'admin-avatar';
       const safeName = toSafeAssetName(fileName) || 'admin-avatar';
-      const objectKey = `admin-avatars/${Date.now()}-${crypto.randomUUID()}-${safeName}.webp`;
+      const objectKey = `sayfa/admin-avatar/${Date.now()}-${crypto.randomUUID()}-${safeName}.webp`;
 
       await env.ASSETS.put(objectKey, imageBody, {
         httpMetadata: {
@@ -1740,6 +2700,130 @@ export default {
       }
     }
 
+    if (url.pathname === '/api/quote-questions') {
+      if (request.method === 'GET') {
+        const includeInactive = url.searchParams.get('includeInactive') === '1';
+
+        if (includeInactive) {
+          const admin = await authenticateAdmin(request, env.DB);
+
+          if (!admin) {
+            return unauthorized();
+          }
+
+          if (!hasAdminModule(admin, 'settings')) {
+            return forbidden();
+          }
+        }
+
+        return json({
+          ok: true,
+          questions: await listQuoteQuestions(
+            env.DB,
+            url.searchParams.get('categoryKey') ?? undefined,
+            url.searchParams.get('productKey') ?? undefined,
+            includeInactive,
+          ),
+        });
+      }
+
+      if (request.method === 'POST' || request.method === 'PUT') {
+        const admin = await authenticateAdmin(request, env.DB);
+
+        if (!admin) {
+          return unauthorized();
+        }
+
+        if (!hasAdminModule(admin, 'settings')) {
+          return forbidden();
+        }
+
+        const body = await getQuoteQuestionListRequestBody(request);
+
+        if (!isValidQuoteQuestionListInput(body)) {
+          return json({ ok: false, error: 'Invalid quote questions payload' }, { status: 400 });
+        }
+
+        return json({
+          ok: true,
+          questions: await replaceQuoteQuestions(env.DB, body),
+        });
+      }
+    }
+
+    if (url.pathname === '/api/wp-source-settings') {
+      const admin = await authenticateAdmin(request, env.DB);
+
+      if (!admin) {
+        return unauthorized();
+      }
+
+      if (!hasAdminModule(admin, 'settings')) {
+        return forbidden();
+      }
+
+      if (request.method === 'GET') {
+        return json({
+          ok: true,
+          settings: await getWpSourceSettings(env.DB),
+        });
+      }
+
+      if (request.method === 'POST' || request.method === 'PUT') {
+        const body = await getWpSourceSettingsRequestBody(request);
+        const validationErrors = getWpSourceSettingsValidationErrors(body);
+
+        if (validationErrors.length > 0 || !body) {
+          return json(
+            {
+              ok: false,
+              error: 'Invalid WordPress source settings payload',
+              fields: validationErrors,
+            },
+            { status: 400 },
+          );
+        }
+
+        return json({
+          ok: true,
+          settings: await upsertWpSourceSettings(env.DB, body),
+        });
+      }
+    }
+
+    if (url.pathname === '/api/wp-source-settings/test' && request.method === 'POST') {
+      const admin = await authenticateAdmin(request, env.DB);
+
+      if (!admin) {
+        return unauthorized();
+      }
+
+      if (!hasAdminModule(admin, 'settings')) {
+        return forbidden();
+      }
+
+      const body = await getWpSourceSettingsRequestBody(request);
+      const validationErrors = getWpSourceSettingsValidationErrors(body);
+
+      if (validationErrors.length > 0 || !body) {
+        return json(
+          {
+            ok: false,
+            error: 'Invalid WordPress source settings payload',
+            fields: validationErrors,
+          },
+          { status: 400 },
+        );
+      }
+
+      const result = await testWpSourceSettings(env.DB, body);
+
+      return json({
+        ok: result.connected,
+        ...result,
+      });
+    }
+
     if (url.pathname === '/api/service-requests' && request.method === 'POST') {
       const body = await getServiceRequestBody(request);
 
@@ -1757,6 +2841,169 @@ export default {
         },
         { status: 201 },
       );
+    }
+
+    if (url.pathname === '/api/blog-categories') {
+      if (request.method === 'GET') {
+        return json({
+          ok: true,
+          categories: await listBlogCategories(env.DB),
+        });
+      }
+
+      if (request.method === 'POST' || request.method === 'PUT') {
+        const admin = await authenticateAdmin(request, env.DB);
+
+        if (!admin) {
+          return unauthorized();
+        }
+
+        if (!hasAdminModule(admin, 'blog')) {
+          return forbidden();
+        }
+
+        const body = await getBlogCategoryRequestBody(request);
+
+        if (!isValidBlogCategoryInput(body)) {
+          return json({ ok: false, error: 'Invalid blog category payload' }, { status: 400 });
+        }
+
+        return json({
+          ok: true,
+          categories: await upsertBlogCategory(env.DB, body),
+        });
+      }
+    }
+
+    if (url.pathname === '/api/blog-tags' && request.method === 'GET') {
+      return json({
+        ok: true,
+        tags: await listBlogTags(env.DB),
+      });
+    }
+
+    if (url.pathname === '/api/blog-redirect' && request.method === 'GET') {
+      const oldUrl = url.searchParams.get('url') ?? url.searchParams.get('path') ?? '';
+
+      if (!oldUrl) {
+        return json({ ok: false, error: 'Missing url parameter' }, { status: 400 });
+      }
+
+      const redirect = await getBlogRedirect(env.DB, oldUrl);
+
+      if (!redirect) {
+        return notFound();
+      }
+
+      if (url.searchParams.get('redirect') === '1') {
+        return Response.redirect(`${url.origin}/blog/${redirect.slug}`, redirect.status_code || 301);
+      }
+
+      return json({
+        ok: true,
+        statusCode: redirect.status_code,
+        location: `/blog/${redirect.slug}`,
+      });
+    }
+
+    if (url.pathname === '/api/blog-posts') {
+      if (request.method === 'GET') {
+        const includeDrafts = url.searchParams.get('includeDrafts') === '1';
+
+        if (includeDrafts) {
+          const admin = await authenticateAdmin(request, env.DB);
+
+          if (!admin) {
+            return unauthorized();
+          }
+
+          if (!hasAdminModule(admin, 'blog')) {
+            return forbidden();
+          }
+        }
+
+        return json({
+          ok: true,
+          posts: await listBlogPosts(env.DB, includeDrafts, Number(url.searchParams.get('limit') ?? 100)),
+        });
+      }
+
+      if (request.method === 'POST') {
+        const admin = await authenticateAdmin(request, env.DB);
+
+        if (!admin) {
+          return unauthorized();
+        }
+
+        if (!hasAdminModule(admin, 'blog')) {
+          return forbidden();
+        }
+
+        const body = await getBlogPostRequestBody(request);
+
+        if (!isValidBlogPostInput(body)) {
+          return json({ ok: false, error: 'Invalid blog post payload' }, { status: 400 });
+        }
+
+        return json(
+          {
+            ok: true,
+            post: await upsertBlogPost(env.DB, body),
+          },
+          { status: 201 },
+        );
+      }
+    }
+
+    const blogPostMatch = url.pathname.match(/^\/api\/blog-posts\/([^/]+)$/);
+
+    if (blogPostMatch) {
+      const blogPostKeyOrSlug = decodeURIComponent(blogPostMatch[1]);
+
+      if (request.method === 'GET') {
+        const post = await getBlogPostByKeyOrSlug(env.DB, blogPostKeyOrSlug, false);
+        return post ? json({ ok: true, post }) : notFound();
+      }
+
+      if (request.method === 'PUT') {
+        const admin = await authenticateAdmin(request, env.DB);
+
+        if (!admin) {
+          return unauthorized();
+        }
+
+        if (!hasAdminModule(admin, 'blog')) {
+          return forbidden();
+        }
+
+        const body = await getBlogPostRequestBody(request);
+
+        if (!isValidBlogPostInput(body)) {
+          return json({ ok: false, error: 'Invalid blog post payload' }, { status: 400 });
+        }
+
+        const post = await upsertBlogPost(env.DB, body, blogPostKeyOrSlug);
+        return post ? json({ ok: true, post }) : notFound();
+      }
+
+      if (request.method === 'DELETE') {
+        const admin = await authenticateAdmin(request, env.DB);
+
+        if (!admin) {
+          return unauthorized();
+        }
+
+        if (!hasAdminModule(admin, 'blog')) {
+          return forbidden();
+        }
+
+        const result = await env.DB.prepare('DELETE FROM blog_posts WHERE key = ?').bind(blogPostKeyOrSlug).run();
+
+        return json({
+          ok: result.meta.changes > 0,
+          deleted: result.meta.changes,
+        });
+      }
     }
 
     if (url.pathname === '/api/product-categories' && request.method === 'POST') {

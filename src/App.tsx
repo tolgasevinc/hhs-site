@@ -1,4 +1,4 @@
-import { type ChangeEvent, type FormEvent, type PointerEvent, useEffect, useRef, useState } from 'react';
+import { type ChangeEvent, type FormEvent, type PointerEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import {
@@ -6,6 +6,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Database,
+  ExternalLink,
+  FileText,
   LockKeyhole,
   LogOut,
   Mail,
@@ -59,6 +61,34 @@ type AdminCategory = {
   sortOrder: number;
 };
 
+type BlogTaxonomyItem = {
+  key: string;
+  title: string;
+  slug: string;
+  description?: string;
+  sortOrder?: number;
+};
+
+type BlogPost = {
+  key: string;
+  title: string;
+  summary: string;
+  targetKeyword: string;
+  content: string;
+  slug: string;
+  metaTitle: string;
+  metaKeywords: string;
+  metaDescription: string;
+  image: string;
+  imageAlt: string;
+  oldUrl: string;
+  seoScore: number;
+  status: 'draft' | 'published';
+  publishedAt: string;
+  categories: BlogTaxonomyItem[];
+  tags: BlogTaxonomyItem[];
+};
+
 type ProductFormState = {
   key: string;
   categoryKey: string;
@@ -72,6 +102,25 @@ type ProductFormState = {
   sortOrder: string;
   alt: string;
   badges: string;
+};
+
+type BlogPostFormState = {
+  key: string;
+  title: string;
+  summary: string;
+  targetKeyword: string;
+  content: string;
+  slug: string;
+  metaTitle: string;
+  metaKeywords: string;
+  metaDescription: string;
+  image: string;
+  imageAlt: string;
+  oldUrl: string;
+  status: 'draft' | 'published';
+  publishedAt: string;
+  categories: string[];
+  tags: string;
 };
 
 type CategoryFormState = {
@@ -91,7 +140,45 @@ type AssetItem = {
   url: string;
   size: number;
   uploaded: string | null;
+  references?: string[];
+  isUsed?: boolean;
 };
+
+type AssetFolderKey = 'all' | 'urun' | 'kategori' | 'blog' | 'sayfa' | 'other';
+
+const assetFolderFilters: { key: AssetFolderKey; label: string }[] = [
+  { key: 'all', label: 'Tümü' },
+  { key: 'urun', label: 'Ürün' },
+  { key: 'kategori', label: 'Kategori' },
+  { key: 'blog', label: 'Blog' },
+  { key: 'sayfa', label: 'Sayfa' },
+  { key: 'other', label: 'Diğer' },
+];
+
+const getAssetFolderKey = (assetKey: string): AssetFolderKey => {
+  const folder = assetKey.split('/')[0] ?? '';
+
+  if (folder === 'kategori' || folder === 'categories') {
+    return 'kategori';
+  }
+
+  if (folder === 'urun' || folder === 'products') {
+    return 'urun';
+  }
+
+  if (folder === 'blog') {
+    return 'blog';
+  }
+
+  if (folder === 'sayfa' || folder === 'admin-avatars') {
+    return 'sayfa';
+  }
+
+  return 'other';
+};
+
+const getAssetFolderLabel = (assetKey: string) =>
+  assetFolderFilters.find((folder) => folder.key === getAssetFolderKey(assetKey))?.label ?? 'Diğer';
 
 type ImagePreview = {
   title: string;
@@ -109,7 +196,7 @@ type CropFocalPoints = Record<ImageVariantKey, CropFocalPoint>;
 
 type PendingImageCrop = {
   file: File;
-  assetType: 'product-image' | 'category-image';
+  assetType: 'product-image' | 'category-image' | 'blog-image';
   previewUrl: string;
   focalPoints: CropFocalPoints;
 } | null;
@@ -148,6 +235,59 @@ type ContactSettings = {
   footerDescription: string;
 };
 
+type WpSourceSettings = {
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password: string;
+  tablePrefix: string;
+  oldSiteUrl: string;
+  includeDrafts: boolean;
+  hasPassword?: boolean;
+  lastTestAt?: string;
+  lastTestStatus?: string;
+  lastTestMessage?: string;
+};
+
+type WpSourceTestResult = {
+  connected: boolean;
+  tables: string[];
+  totalTables: number;
+  postCount: number;
+  seoMetaKeys: { meta_key: string; total: number }[];
+  error?: string;
+};
+
+type QuoteQuestion = {
+  id: string;
+  categoryKey: string;
+  productKey?: string;
+  question: string;
+  description: string;
+  answerType: 'text' | 'single' | 'multiple' | 'number';
+  options: string[];
+  defaultValue: string;
+  maxLength: number;
+  decimalPlaces: number;
+  isRequired: boolean;
+  sortOrder: number;
+  isActive: boolean;
+};
+
+type QuoteQuestionFormState = {
+  id: string;
+  question: string;
+  description: string;
+  answerType: 'text' | 'single' | 'multiple' | 'number';
+  options: string;
+  defaultValue: string;
+  maxLength: string;
+  decimalPlaces: string;
+  isRequired: boolean;
+  isActive: boolean;
+};
+
 type AdminUser = {
   id: string;
   username: string;
@@ -171,8 +311,8 @@ type ServiceRequestFormState = {
   description: string;
 };
 
-type AdminSection = 'products' | 'users' | 'database';
-type SettingsTab = 'footer' | 'contact';
+type AdminSection = 'products' | 'blog' | 'assets' | 'quoteQuestions' | 'users' | 'database';
+type SettingsTab = 'footer' | 'contact' | 'wordpress';
 
 type DatabaseColumn = {
   name: string;
@@ -200,6 +340,7 @@ type AdminUserFormState = {
 
 const adminModuleOptions = [
   { key: 'products', label: 'Ürünler', description: 'Ürün ve kategori yönetimi' },
+  { key: 'blog', label: 'Blog', description: 'Blog yazıları, kategori ve SEO yönetimi' },
   { key: 'users', label: 'Kullanıcılar', description: 'Kullanıcı ekleme ve yetki düzenleme' },
   { key: 'settings', label: 'Ayarlar', description: 'Footer ve site ayarları' },
   { key: 'database', label: 'Veritabanı', description: 'D1 tablo ve sütun metadatası' },
@@ -250,6 +391,34 @@ const defaultContactSettings: ContactSettings = {
   footerDescription: 'Otomatik kapı, bariyer ve geçiş kontrol sistemlerinde keşif, satış, montaj ve teknik destek.',
 };
 
+const defaultWpSourceSettings: WpSourceSettings = {
+  host: '',
+  port: 3306,
+  database: '',
+  username: '',
+  password: '',
+  tablePrefix: 'wp_',
+  oldSiteUrl: '',
+  includeDrafts: false,
+  hasPassword: false,
+  lastTestAt: '',
+  lastTestStatus: '',
+  lastTestMessage: '',
+};
+
+const createEmptyQuoteQuestionForm = (): QuoteQuestionFormState => ({
+  id: `quote_${crypto.randomUUID()}`,
+  question: '',
+  description: '',
+  answerType: 'text',
+  options: '',
+  defaultValue: '',
+  maxLength: '',
+  decimalPlaces: '0',
+  isRequired: false,
+  isActive: true,
+});
+
 const contactSettingFields: { key: keyof ContactSettings; label: string; placeholder: string }[] = [
   { key: 'phonePrimary', label: 'Telefon 1', placeholder: '+90 264 291 00 60' },
   { key: 'phoneSecondary', label: 'Telefon 2', placeholder: '+90 542 614 29 29' },
@@ -264,6 +433,16 @@ const contactSettingFields: { key: keyof ContactSettings; label: string; placeho
     label: 'Footer Logo Altı Metin',
     placeholder: 'Footer logo altında gösterilecek kısa açıklama',
   },
+];
+
+const wpSourceFields: { key: keyof WpSourceSettings; label: string; placeholder: string; type?: string }[] = [
+  { key: 'host', label: 'MySQL Host', placeholder: '127.0.0.1 veya mysql.example.com' },
+  { key: 'port', label: 'Port', placeholder: '3306', type: 'number' },
+  { key: 'database', label: 'Veritabanı', placeholder: 'wordpress_db' },
+  { key: 'username', label: 'Kullanıcı', placeholder: 'wp_user' },
+  { key: 'password', label: 'Şifre', placeholder: 'Kayıtlı şifreyi değiştirmek için yazın', type: 'password' },
+  { key: 'tablePrefix', label: 'Tablo Prefix', placeholder: 'wp_' },
+  { key: 'oldSiteUrl', label: 'Eski Site URL', placeholder: 'https://eskisite.com' },
 ];
 
 const serviceRequestTypes = [
@@ -293,6 +472,25 @@ const createEmptyProductForm = (categoryKey = ''): ProductFormState => ({
   sortOrder: '0',
   alt: '',
   badges: '',
+});
+
+const createEmptyBlogPostForm = (categoryKey = ''): BlogPostFormState => ({
+  key: '',
+  title: '',
+  summary: '',
+  targetKeyword: '',
+  content: '',
+  slug: '',
+  metaTitle: '',
+  metaKeywords: '',
+  metaDescription: '',
+  image: '',
+  imageAlt: '',
+  oldUrl: '',
+  status: 'draft',
+  publishedAt: '',
+  categories: categoryKey ? [categoryKey] : [],
+  tags: '',
 });
 
 const emptyCategoryForm: CategoryFormState = {
@@ -362,6 +560,60 @@ const createProductKeyFromTitle = (title: string) => {
   return words
     .map((word, index) => (index === 0 ? word : `${word.charAt(0).toUpperCase()}${word.slice(1)}`))
     .join('');
+};
+
+const countWords = (value: string) => value.trim().split(/\s+/).filter(Boolean).length;
+
+const countKeywordMatches = (value: string, keyword: string) => {
+  const normalizedValue = normalizeTurkishText(value);
+  const normalizedKeyword = normalizeTurkishText(keyword);
+
+  if (!normalizedKeyword) {
+    return 0;
+  }
+
+  return normalizedValue.split(normalizedKeyword).length - 1;
+};
+
+const includesKeyword = (value: string, keyword: string) => countKeywordMatches(value, keyword) > 0;
+
+const calculateBlogSeo = (form: BlogPostFormState) => {
+  const summaryWordCount = countWords(form.summary);
+  const summaryKeywordCount = countKeywordMatches(form.summary, form.targetKeyword);
+  const summaryKeywordDensity = summaryWordCount > 0 ? (summaryKeywordCount / summaryWordCount) * 100 : 0;
+  const checks = [
+    { label: 'Hedef kelime tanımlandı.', passed: Boolean(form.targetKeyword.trim()) },
+    { label: 'Blog adı boş bırakılamaz.', passed: Boolean(form.title.trim()) },
+    { label: 'Hedef kelime Blog başlığı içerisinde geçiyor.', passed: includesKeyword(form.title, form.targetKeyword) },
+    { label: 'Blog açıklama alanı boş bırakılamaz.', passed: Boolean(form.summary.trim()) },
+    { label: 'Hedef kelime Blog açıklaması içerisinde geçiyor.', passed: includesKeyword(form.summary, form.targetKeyword) },
+    {
+      label: `Blog açıklama alanı en az 50 kelime içermelidir. Kelime Sayısı: ${summaryWordCount}`,
+      passed: summaryWordCount >= 50,
+    },
+    {
+      label: `Hedef kelime, Blog açıklamasında %${summaryKeywordDensity.toFixed(2)} oranında geçmektedir.`,
+      passed: summaryKeywordDensity > 0,
+    },
+    { label: 'Blog sayfa başlığı boş olamaz.', passed: Boolean(form.metaTitle.trim()) },
+    {
+      label: `Blog sayfa başlığı alanı minimum 20 maksimum 60 karakter içermelidir. Karakter Sayısı: ${form.metaTitle.length}`,
+      passed: form.metaTitle.length >= 20 && form.metaTitle.length <= 60,
+    },
+    { label: 'Hedef kelime Blog sayfa başlığı içerisinde geçmelidir.', passed: includesKeyword(form.metaTitle, form.targetKeyword) },
+    { label: 'Blog meta açıklaması boş olamaz.', passed: Boolean(form.metaDescription.trim()) },
+    {
+      label: `Blog meta açıklama alanı minimum 50 maksimum 155 karakter içermelidir. Karakter sayısı: ${form.metaDescription.length}`,
+      passed: form.metaDescription.length >= 50 && form.metaDescription.length <= 155,
+    },
+    { label: 'Hedef kelime Blog açıklama içerisinde geçiyor.', passed: includesKeyword(form.metaDescription, form.targetKeyword) },
+  ];
+
+  return {
+    checks,
+    score: Math.round((checks.filter((check) => check.passed).length / checks.length) * 100),
+    summaryKeywordDensity,
+  };
 };
 
 const withImageVariantFallbacks = <
@@ -520,50 +772,81 @@ const createProductImageVariants = async (file: File, focalPoints: CropFocalPoin
 
 function App() {
   const isPanelPage = window.location.pathname.toLowerCase() === '/panel';
+  const blogSlug = window.location.pathname.match(/^\/blog\/([^/]+)$/)?.[1] ?? '';
   const [language, setLanguage] = useState('TR');
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [isServiceRequestModalOpen, setIsServiceRequestModalOpen] = useState(false);
   const [isServiceTypeMenuOpen, setIsServiceTypeMenuOpen] = useState(false);
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const [isContactMenuOpen, setIsContactMenuOpen] = useState(false);
+  const [selectedQuoteCategoryKey, setSelectedQuoteCategoryKey] = useState('');
+  const [selectedQuoteProductKey, setSelectedQuoteProductKey] = useState('');
   const [hoveredCategoryGalleryIndex, setHoveredCategoryGalleryIndex] = useState<number | null>(null);
   const [selectedCategoryGalleryIndex, setSelectedCategoryGalleryIndex] = useState<number | null>(null);
   const [hasQuoteButtonEntered, setHasQuoteButtonEntered] = useState(false);
   const [adminSection, setAdminSection] = useState<AdminSection>('products');
   const [adminProducts, setAdminProducts] = useState<AdminProduct[]>([]);
   const [adminCategories, setAdminCategories] = useState<AdminCategory[]>([]);
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
+  const [selectedBlogPost, setSelectedBlogPost] = useState<BlogPost | null>(null);
+  const [blogCategories, setBlogCategories] = useState<BlogTaxonomyItem[]>([]);
+  const [blogTags, setBlogTags] = useState<BlogTaxonomyItem[]>([]);
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
+  const [quoteQuestions, setQuoteQuestions] = useState<QuoteQuestion[]>([]);
   const [contactSettings, setContactSettings] = useState<ContactSettings>(defaultContactSettings);
+  const [wpSourceSettings, setWpSourceSettings] = useState<WpSourceSettings>(defaultWpSourceSettings);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [databaseTables, setDatabaseTables] = useState<DatabaseTable[]>([]);
   const [assets, setAssets] = useState<AssetItem[]>([]);
+  const [assetViewMode, setAssetViewMode] = useState<'all' | 'unused'>('all');
+  const [activeAssetFolder, setActiveAssetFolder] = useState<AssetFolderKey>('all');
+  const [selectedAssetKeys, setSelectedAssetKeys] = useState<Set<string>>(new Set());
   const [imagePreview, setImagePreview] = useState<ImagePreview>(null);
   const [pendingImageCrop, setPendingImageCrop] = useState<PendingImageCrop>(null);
   const [selectedDatabaseTable, setSelectedDatabaseTable] = useState<DatabaseTable | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isBlogModalOpen, setIsBlogModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isAssetManagerOpen, setIsAssetManagerOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [isQuoteQuestionModalOpen, setIsQuoteQuestionModalOpen] = useState(false);
   const [isSavingSocialLinks, setIsSavingSocialLinks] = useState(false);
   const [isSavingContactSettings, setIsSavingContactSettings] = useState(false);
+  const [isSavingQuoteQuestions, setIsSavingQuoteQuestions] = useState(false);
+  const [isSavingWpSourceSettings, setIsSavingWpSourceSettings] = useState(false);
+  const [isTestingWpSourceSettings, setIsTestingWpSourceSettings] = useState(false);
   const [isSubmittingServiceRequest, setIsSubmittingServiceRequest] = useState(false);
   const [isSavingUser, setIsSavingUser] = useState(false);
   const [isLoadingDatabaseTables, setIsLoadingDatabaseTables] = useState(false);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
+  const [isDeletingSelectedAssets, setIsDeletingSelectedAssets] = useState(false);
   const [isUploadingProductImage, setIsUploadingProductImage] = useState(false);
+  const [isUploadingBlogImage, setIsUploadingBlogImage] = useState(false);
   const [isUploadingCategoryImage, setIsUploadingCategoryImage] = useState(false);
   const [isUploadingUserAvatar, setIsUploadingUserAvatar] = useState(false);
   const [isConfirmingCategoryDelete, setIsConfirmingCategoryDelete] = useState(false);
   const [isConfirmingUserDisable, setIsConfirmingUserDisable] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('footer');
   const [socialLinkForm, setSocialLinkForm] = useState<Record<string, string>>({});
+  const [quoteQuestionCategoryKey, setQuoteQuestionCategoryKey] = useState('');
+  const [quoteQuestionProductKey, setQuoteQuestionProductKey] = useState('');
+  const [quoteQuestionFormCategoryKey, setQuoteQuestionFormCategoryKey] = useState('');
+  const [quoteQuestionFormProductKey, setQuoteQuestionFormProductKey] = useState('');
+  const [quoteQuestionForm, setQuoteQuestionForm] = useState<QuoteQuestionFormState>(createEmptyQuoteQuestionForm());
+  const [quoteAnswers, setQuoteAnswers] = useState<Record<string, string | string[]>>({});
   const [contactSettingsForm, setContactSettingsForm] = useState<ContactSettings>(defaultContactSettings);
+  const [wpSourceSettingsForm, setWpSourceSettingsForm] = useState<WpSourceSettings>(defaultWpSourceSettings);
+  const [wpSourceTestResult, setWpSourceTestResult] = useState<WpSourceTestResult | null>(null);
   const [serviceRequestForm, setServiceRequestForm] = useState<ServiceRequestFormState>(emptyServiceRequestForm);
   const [serviceRequestMessage, setServiceRequestMessage] = useState('');
   const [editingProductKey, setEditingProductKey] = useState<string | null>(null);
+  const [editingBlogKey, setEditingBlogKey] = useState<string | null>(null);
   const [editingCategoryKey, setEditingCategoryKey] = useState<string | null>(null);
+  const [editingQuoteQuestionId, setEditingQuoteQuestionId] = useState<string | null>(null);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [productForm, setProductForm] = useState<ProductFormState>(createEmptyProductForm());
+  const [blogPostForm, setBlogPostForm] = useState<BlogPostFormState>(createEmptyBlogPostForm());
   const [categoryForm, setCategoryForm] = useState<CategoryFormState>(emptyCategoryForm);
   const [adminUserForm, setAdminUserForm] = useState<AdminUserFormState>(emptyAdminUserForm);
   const [adminMessage, setAdminMessage] = useState('');
@@ -576,12 +859,13 @@ function App() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const productCarouselRef = useRef<HTMLDivElement>(null);
   const productImageInputRef = useRef<HTMLInputElement>(null);
+  const blogImageInputRef = useRef<HTMLInputElement>(null);
   const categoryImageInputRef = useRef<HTMLInputElement>(null);
   const cropPointRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const cropPreviewImageRefs = useRef<(HTMLImageElement | null)[]>([]);
   const userAvatarInputRef = useRef<HTMLInputElement>(null);
 
-  const authorizedFetch = (path: string, init: RequestInit = {}) => {
+  const authorizedFetch = useCallback((path: string, init: RequestInit = {}) => {
     const headers = new Headers(init.headers);
 
     if (adminToken) {
@@ -592,19 +876,39 @@ function App() {
       ...init,
       headers,
     });
-  };
+  }, [adminToken]);
 
   const canAccessModule = (moduleKey: string) => {
     return Boolean(adminUser?.modules.includes(moduleKey));
   };
 
-  const activeAdminSection = canAccessModule(adminSection)
+  const getAdminSectionModuleKey = (section: AdminSection) => {
+    if (section === 'assets') {
+      return 'products';
+    }
+
+    if (section === 'quoteQuestions') {
+      return 'settings';
+    }
+
+    return section;
+  };
+
+  const canAccessAdminSection = (section: AdminSection) => {
+    return canAccessModule(getAdminSectionModuleKey(section));
+  };
+
+  const activeAdminSection = canAccessAdminSection(adminSection)
     ? adminSection
-    : canAccessModule('products')
+    : canAccessAdminSection('products')
       ? 'products'
-      : canAccessModule('users')
-        ? 'users'
-        : 'database';
+      : canAccessAdminSection('blog')
+        ? 'blog'
+        : canAccessAdminSection('quoteQuestions')
+          ? 'quoteQuestions'
+          : canAccessAdminSection('users')
+            ? 'users'
+            : 'database';
   const phonePrimaryHref = createPhoneHref(contactSettings.phonePrimary);
   const phoneSecondaryHref = createPhoneHref(contactSettings.phoneSecondary);
   const whatsappHref = createWhatsAppHref(contactSettings.whatsapp);
@@ -631,6 +935,112 @@ function App() {
       };
     })
     .filter((item): item is { title: string; url: string } => Boolean(item.url));
+  const quoteCategories = adminCategories.map((category) => {
+    const fallbackProduct = adminProducts.find((product) => product.categoryKey === category.key);
+
+    return {
+      ...category,
+      image: category.imageSquare || category.imageHorizontal || category.image || fallbackProduct?.imageSquare || fallbackProduct?.imageHorizontal || fallbackProduct?.image || '',
+      productCount: adminProducts.filter((product) => product.categoryKey === category.key).length,
+    };
+  });
+  const selectedQuoteCategory = quoteCategories.find((category) => category.key === selectedQuoteCategoryKey);
+  const quoteProducts = selectedQuoteCategoryKey
+    ? adminProducts.filter((product) => product.categoryKey === selectedQuoteCategoryKey)
+    : [];
+  const selectedQuoteProduct = quoteProducts.find((product) => product.key === selectedQuoteProductKey);
+  const activeQuoteQuestions = selectedQuoteCategoryKey && selectedQuoteProductKey
+    ? quoteQuestions.filter(
+        (question) =>
+          question.categoryKey === selectedQuoteCategoryKey &&
+          (question.productKey ? question.productKey === selectedQuoteProductKey : true) &&
+          question.isActive,
+      )
+    : [];
+  const quoteQuestionProducts = quoteQuestionCategoryKey
+    ? adminProducts.filter((product) => product.categoryKey === quoteQuestionCategoryKey)
+    : [];
+  const quoteQuestionFormProducts = quoteQuestionFormCategoryKey
+    ? adminProducts.filter((product) => product.categoryKey === quoteQuestionFormCategoryKey)
+    : [];
+  const filteredQuoteQuestions = quoteQuestions
+    .filter(
+      (question) =>
+        (!quoteQuestionCategoryKey || question.categoryKey === quoteQuestionCategoryKey) &&
+        (!quoteQuestionProductKey || question.productKey === quoteQuestionProductKey),
+    )
+    .sort((firstQuestion, secondQuestion) => {
+      const categoryCompare = firstQuestion.categoryKey.localeCompare(secondQuestion.categoryKey);
+
+      if (categoryCompare !== 0) {
+        return categoryCompare;
+      }
+
+      const productCompare = (firstQuestion.productKey ?? '').localeCompare(secondQuestion.productKey ?? '');
+
+      if (productCompare !== 0) {
+        return productCompare;
+      }
+
+      return firstQuestion.sortOrder - secondQuestion.sortOrder;
+    });
+  const visibleAssets = assets.filter(
+    (asset) => activeAssetFolder === 'all' || getAssetFolderKey(asset.key) === activeAssetFolder,
+  );
+  const selectedVisibleAssetCount = visibleAssets.filter((asset) => selectedAssetKeys.has(asset.key)).length;
+  const quoteAnswerSummary = activeQuoteQuestions
+    .map((question) => {
+      const answer = quoteAnswers[question.id];
+      const answerText = Array.isArray(answer) ? answer.join(', ') : answer;
+
+      return answerText ? `${question.question}: ${answerText}` : '';
+    })
+    .filter(Boolean)
+    .join('\n');
+  const quoteContinueMessage = [
+    'Merhaba, teklif almak istiyorum.',
+    selectedQuoteCategory ? `Kategori: ${selectedQuoteCategory.title}` : '',
+    selectedQuoteProduct ? `Ürün: ${selectedQuoteProduct.title}` : '',
+    quoteAnswerSummary,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  const quoteContinueHref = quoteContinueMessage
+    ? `https://wa.me/${contactSettings.whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(quoteContinueMessage)}`
+    : whatsappHref;
+  const isQuoteContinueDisabled =
+    Boolean(selectedQuoteCategory && !selectedQuoteProduct) ||
+    activeQuoteQuestions.some((question) => {
+      if (!question.isRequired) {
+        return false;
+      }
+
+      const answer = quoteAnswers[question.id];
+
+      return Array.isArray(answer) ? answer.length === 0 : !answer?.trim();
+    });
+  const latestBlogPosts = blogPosts.filter((post) => post.status === 'published').slice(0, 3);
+  const blogSeo = calculateBlogSeo(blogPostForm);
+
+  const getAdminCategoryTitle = (categoryKey: string) =>
+    adminCategories.find((category) => category.key === categoryKey)?.title ?? categoryKey;
+  const getAdminProductTitle = (productKey?: string) =>
+    adminProducts.find((product) => product.key === productKey)?.title ?? productKey ?? 'Genel';
+  const getQuoteQuestionAnswerTypeLabel = (answerType: QuoteQuestion['answerType']) => {
+    if (answerType === 'text') {
+      return 'Metin';
+    }
+
+    if (answerType === 'single') {
+      return 'Tek seçim';
+    }
+
+    if (answerType === 'multiple') {
+      return 'Çoklu seçim';
+    }
+
+    return 'Sayı';
+  };
 
   const openCategoryGalleryImage = (index: number) => {
     setSelectedCategoryGalleryIndex(index);
@@ -740,16 +1150,29 @@ function App() {
       }
 
       try {
-        const [productsResponse, categoriesResponse, socialLinksResponse, contactSettingsResponse] = await Promise.all([
-          fetch(apiUrl('/api/products')),
-          fetch(apiUrl('/api/product-categories')),
-          fetch(apiUrl('/api/footer-social-links')),
-          fetch(apiUrl('/api/contact-settings')),
-        ]);
+        const [productsResponse, categoriesResponse, socialLinksResponse, contactSettingsResponse, quoteQuestionsResponse, blogPostsResponse, blogCategoriesResponse, blogTagsResponse] =
+          await Promise.all([
+            fetch(apiUrl('/api/products')),
+            fetch(apiUrl('/api/product-categories')),
+            fetch(apiUrl('/api/footer-social-links')),
+            fetch(apiUrl('/api/contact-settings')),
+            isPanelPage && adminUser?.modules.includes('settings')
+              ? authorizedFetch('/api/quote-questions?includeInactive=1')
+              : fetch(apiUrl('/api/quote-questions')),
+            isPanelPage && adminUser?.modules.includes('blog')
+              ? authorizedFetch('/api/blog-posts?includeDrafts=1')
+              : fetch(apiUrl('/api/blog-posts?limit=3')),
+            fetch(apiUrl('/api/blog-categories')),
+            fetch(apiUrl('/api/blog-tags')),
+          ]);
         const productsData = (await productsResponse.json()) as { products?: AdminProduct[] };
         const categoriesData = (await categoriesResponse.json()) as { categories?: AdminCategory[] };
         const socialLinksData = (await socialLinksResponse.json()) as { links?: SocialLink[] };
         const contactSettingsData = (await contactSettingsResponse.json()) as { settings?: ContactSettings };
+        const quoteQuestionsData = (await quoteQuestionsResponse.json()) as { questions?: QuoteQuestion[] };
+        const blogPostsData = (await blogPostsResponse.json()) as { posts?: BlogPost[] };
+        const blogCategoriesData = (await blogCategoriesResponse.json()) as { categories?: BlogTaxonomyItem[] };
+        const blogTagsData = (await blogTagsResponse.json()) as { tags?: BlogTaxonomyItem[] };
 
         if (productsData.products) {
           setAdminProducts(productsData.products);
@@ -769,6 +1192,28 @@ function App() {
         if (contactSettingsData.settings) {
           setContactSettings(contactSettingsData.settings);
           setContactSettingsForm(contactSettingsData.settings);
+        }
+
+        if (quoteQuestionsData.questions) {
+          setQuoteQuestions(quoteQuestionsData.questions);
+        }
+
+        if (blogPostsData.posts) {
+          setBlogPosts(blogPostsData.posts);
+        }
+
+        if (blogCategoriesData.categories) {
+          setBlogCategories(blogCategoriesData.categories);
+        }
+
+        if (blogTagsData.tags) {
+          setBlogTags(blogTagsData.tags);
+        }
+
+        if (blogSlug) {
+          const blogPostResponse = await fetch(apiUrl(`/api/blog-posts/${encodeURIComponent(blogSlug)}`));
+          const blogPostData = (await blogPostResponse.json().catch(() => null)) as { post?: BlogPost } | null;
+          setSelectedBlogPost(blogPostData?.post ?? null);
         }
 
         if (isPanelPage && adminUser?.modules.includes('users')) {
@@ -800,7 +1245,7 @@ function App() {
     };
 
     void loadCatalog();
-  }, [adminToken, authStatus, adminUser, isPanelPage]);
+  }, [adminToken, authStatus, adminUser, authorizedFetch, blogSlug, isPanelPage]);
 
   useEffect(() => {
     const closeModalWithEscape = (event: KeyboardEvent) => {
@@ -835,6 +1280,11 @@ function App() {
         return;
       }
 
+      if (isHeaderMenuOpen) {
+        setIsHeaderMenuOpen(false);
+        return;
+      }
+
       if (isServiceTypeMenuOpen) {
         setIsServiceTypeMenuOpen(false);
         return;
@@ -857,6 +1307,12 @@ function App() {
         return;
       }
 
+      if (isQuoteQuestionModalOpen) {
+        setIsQuoteQuestionModalOpen(false);
+        setEditingQuoteQuestionId(null);
+        return;
+      }
+
       if (isCategoryModalOpen) {
         setIsCategoryModalOpen(false);
         setEditingCategoryKey(null);
@@ -867,6 +1323,12 @@ function App() {
       if (isProductModalOpen) {
         setIsProductModalOpen(false);
         setEditingProductKey(null);
+        return;
+      }
+
+      if (isBlogModalOpen) {
+        setIsBlogModalOpen(false);
+        setEditingBlogKey(null);
         return;
       }
 
@@ -888,15 +1350,19 @@ function App() {
   }, [
     isCategoryModalOpen,
     isContactMenuOpen,
+    isHeaderMenuOpen,
     isServiceTypeMenuOpen,
     imagePreview,
     isAssetManagerOpen,
+    isBlogModalOpen,
     isProductModalOpen,
+    isQuoteQuestionModalOpen,
     pendingImageCrop,
     isQuoteModalOpen,
     isServiceRequestModalOpen,
     isSettingsModalOpen,
     isUserModalOpen,
+    editingQuoteQuestionId,
     selectedDatabaseTable,
     selectedCategoryGalleryIndex,
   ]);
@@ -924,15 +1390,17 @@ function App() {
 
   const uploadImageVariants = async (
     file: File,
-    assetType: 'product-image' | 'category-image',
+    assetType: 'product-image' | 'category-image' | 'blog-image',
     focalPoints: CropFocalPoints = defaultCropFocalPoints,
   ) => {
     const variants = await createProductImageVariants(file, focalPoints);
     const uploads = await Promise.all(
       Object.entries(variants).map(async ([variant, blob]) => {
-        const uploadEndpoint = assetType === 'category-image' ? 'product-image' : assetType;
-        const uploadVariant = assetType === 'category-image' ? `category-${variant}` : variant;
-        const uploadPath = `/api/assets/${uploadEndpoint}?variant=${uploadVariant}&name=${encodeURIComponent(file.name)}`;
+        const uploadEndpoint = assetType === 'category-image' ? 'category-image' : 'product-image';
+        const uploadVariant = variant;
+        const uploadFolder =
+          assetType === 'category-image' ? 'kategori' : assetType === 'blog-image' ? 'blog' : 'urun';
+        const uploadPath = `/api/assets/${uploadEndpoint}?variant=${uploadVariant}&folder=${uploadFolder}&name=${encodeURIComponent(file.name)}`;
         const response = await authorizedFetch(uploadPath, {
           method: 'POST',
           headers: {
@@ -972,7 +1440,7 @@ function App() {
     return { urls, totalSize };
   };
 
-  const openImageCropper = (file: File, assetType: 'product-image' | 'category-image') => {
+  const openImageCropper = (file: File, assetType: 'product-image' | 'category-image' | 'blog-image') => {
     closePendingImageCrop();
     setPendingImageCrop({
       file,
@@ -1012,7 +1480,12 @@ function App() {
     }
 
     const { file, assetType, focalPoints } = pendingImageCrop;
-    const setUploading = assetType === 'product-image' ? setIsUploadingProductImage : setIsUploadingCategoryImage;
+    const setUploading =
+      assetType === 'product-image'
+        ? setIsUploadingProductImage
+        : assetType === 'blog-image'
+          ? setIsUploadingBlogImage
+          : setIsUploadingCategoryImage;
 
     setUploading(true);
 
@@ -1030,6 +1503,11 @@ function App() {
           imageSquare: uploaded.urls.square,
           imageHorizontal: uploaded.urls.horizontal,
           imageVertical: uploaded.urls.vertical,
+        }));
+      } else if (assetType === 'blog-image') {
+        setBlogPostForm((currentForm) => ({
+          ...currentForm,
+          image: uploaded.urls.horizontal,
         }));
       } else {
         setCategoryForm((currentForm) => ({
@@ -1107,6 +1585,84 @@ function App() {
         slug: createSlugFromTitle(title),
       };
     });
+  };
+
+  const openNewBlogModal = () => {
+    setEditingBlogKey(null);
+    setBlogPostForm(createEmptyBlogPostForm(blogCategories[0]?.key ?? ''));
+    setIsBlogModalOpen(true);
+    setAdminMessage('');
+  };
+
+  const openEditBlogModal = (post: BlogPost) => {
+    setEditingBlogKey(post.key);
+    setBlogPostForm({
+      key: post.key,
+      title: post.title,
+      summary: post.summary,
+      targetKeyword: post.targetKeyword,
+      content: post.content,
+      slug: post.slug,
+      metaTitle: post.metaTitle,
+      metaKeywords: post.metaKeywords,
+      metaDescription: post.metaDescription,
+      image: post.image,
+      imageAlt: post.imageAlt,
+      oldUrl: post.oldUrl,
+      status: post.status,
+      publishedAt: post.publishedAt,
+      categories: post.categories.map((category) => category.key),
+      tags: post.tags.map((tag) => tag.title).join(', '),
+    });
+    setIsBlogModalOpen(true);
+    setAdminMessage('');
+  };
+
+  const closeBlogModal = () => {
+    setIsBlogModalOpen(false);
+    setEditingBlogKey(null);
+  };
+
+  const updateBlogPostForm = (field: keyof BlogPostFormState, value: string | string[]) => {
+    setBlogPostForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }));
+  };
+
+  const updateBlogTitle = (title: string) => {
+    setBlogPostForm((currentForm) => ({
+      ...currentForm,
+      title,
+      key: editingBlogKey ? currentForm.key : createProductKeyFromTitle(title),
+      slug: editingBlogKey ? currentForm.slug : createSlugFromTitle(title),
+      metaTitle: currentForm.metaTitle || title,
+    }));
+  };
+
+  const toggleBlogCategory = (categoryKey: string) => {
+    setBlogPostForm((currentForm) => ({
+      ...currentForm,
+      categories: currentForm.categories.includes(categoryKey)
+        ? currentForm.categories.filter((key) => key !== categoryKey)
+        : [...currentForm.categories, categoryKey],
+    }));
+  };
+
+  const uploadBlogImage = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setAdminMessage('Lütfen geçerli bir blog görseli seçin.');
+      return;
+    }
+
+    openImageCropper(file, 'blog-image');
   };
 
   const uploadProductImage = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -1295,16 +1851,25 @@ function App() {
   };
 
   const reloadAdminCatalog = async () => {
-    const [productsResponse, categoriesResponse, socialLinksResponse, contactSettingsResponse] = await Promise.all([
-      fetch(apiUrl('/api/products')),
-      fetch(apiUrl('/api/product-categories')),
-      fetch(apiUrl('/api/footer-social-links')),
-      fetch(apiUrl('/api/contact-settings')),
-    ]);
+    const [productsResponse, categoriesResponse, socialLinksResponse, contactSettingsResponse, quoteQuestionsResponse, blogPostsResponse, blogCategoriesResponse, blogTagsResponse] =
+      await Promise.all([
+        fetch(apiUrl('/api/products')),
+        fetch(apiUrl('/api/product-categories')),
+        fetch(apiUrl('/api/footer-social-links')),
+        fetch(apiUrl('/api/contact-settings')),
+        canAccessModule('settings') ? authorizedFetch('/api/quote-questions?includeInactive=1') : fetch(apiUrl('/api/quote-questions')),
+        canAccessModule('blog') ? authorizedFetch('/api/blog-posts?includeDrafts=1') : fetch(apiUrl('/api/blog-posts?limit=3')),
+        fetch(apiUrl('/api/blog-categories')),
+        fetch(apiUrl('/api/blog-tags')),
+      ]);
     const productsData = (await productsResponse.json()) as { products?: AdminProduct[] };
     const categoriesData = (await categoriesResponse.json()) as { categories?: AdminCategory[] };
     const socialLinksData = (await socialLinksResponse.json()) as { links?: SocialLink[] };
     const contactSettingsData = (await contactSettingsResponse.json()) as { settings?: ContactSettings };
+    const quoteQuestionsData = (await quoteQuestionsResponse.json()) as { questions?: QuoteQuestion[] };
+    const blogPostsData = (await blogPostsResponse.json()) as { posts?: BlogPost[] };
+    const blogCategoriesData = (await blogCategoriesResponse.json()) as { categories?: BlogTaxonomyItem[] };
+    const blogTagsData = (await blogTagsResponse.json()) as { tags?: BlogTaxonomyItem[] };
 
     if (productsData.products) {
       setAdminProducts(productsData.products);
@@ -1325,13 +1890,30 @@ function App() {
       setContactSettings(contactSettingsData.settings);
       setContactSettingsForm(contactSettingsData.settings);
     }
+
+    if (quoteQuestionsData.questions) {
+      setQuoteQuestions(quoteQuestionsData.questions);
+    }
+
+    if (blogPostsData.posts) {
+      setBlogPosts(blogPostsData.posts);
+    }
+
+    if (blogCategoriesData.categories) {
+      setBlogCategories(blogCategoriesData.categories);
+    }
+
+    if (blogTagsData.tags) {
+      setBlogTags(blogTagsData.tags);
+    }
   };
 
-  const reloadAssets = async () => {
+  const reloadAssets = async (mode: 'all' | 'unused' = assetViewMode) => {
+    setAssetViewMode(mode);
     setIsLoadingAssets(true);
 
     try {
-      const response = await authorizedFetch('/api/assets');
+      const response = await authorizedFetch(`/api/assets${mode === 'unused' ? '?unused=1' : ''}`);
       const data = (await response.json()) as { assets?: AssetItem[] };
 
       if (response.status === 401) {
@@ -1345,18 +1927,110 @@ function App() {
         return;
       }
 
-      setAssets(data.assets);
+      const nextAssets = data.assets.map((asset) => ({
+        ...asset,
+        url: asset.url.startsWith('/api/') ? apiUrl(asset.url) : asset.url,
+      }));
+
+      setAssets(nextAssets);
+      setSelectedAssetKeys((currentSelection) => {
+        if (mode === 'unused') {
+          return new Set(nextAssets.map((asset) => asset.key));
+        }
+
+        const nextAssetKeys = new Set(nextAssets.map((asset) => asset.key));
+        return new Set([...currentSelection].filter((assetKey) => nextAssetKeys.has(assetKey)));
+      });
+
+      if (mode === 'unused') {
+        setAdminMessage(
+          nextAssets.length > 0
+            ? `${nextAssets.length} kullanılmayan görsel tespit edildi.`
+            : 'Kullanılmayan görsel bulunamadı.',
+        );
+      }
+      return nextAssets;
     } catch {
       setAdminMessage('Görseller yüklenemedi. API bağlantısını kontrol edin.');
+      return [];
     } finally {
       setIsLoadingAssets(false);
     }
   };
 
-  const openAssetManager = () => {
-    setIsAssetManagerOpen(true);
-    setAdminMessage('');
-    void reloadAssets();
+  const showAllAssets = () => {
+    setSelectedAssetKeys(new Set());
+    void reloadAssets('all');
+  };
+
+  const showUnusedAssets = () => {
+    void reloadAssets('unused');
+  };
+
+  const getAssetUsageLabel = (asset: AssetItem) => {
+    if (asset.isUsed || (asset.references?.length ?? 0) > 0) {
+      return `Kullanılıyor${asset.references?.length ? `: ${asset.references.slice(0, 2).join(', ')}` : ''}`;
+    }
+
+    return 'Kullanılmıyor';
+  };
+
+  const toggleAssetSelection = (assetKey: string) => {
+    setSelectedAssetKeys((currentSelection) => {
+      const nextSelection = new Set(currentSelection);
+
+      if (nextSelection.has(assetKey)) {
+        nextSelection.delete(assetKey);
+      } else {
+        nextSelection.add(assetKey);
+      }
+
+      return nextSelection;
+    });
+  };
+
+  const deleteSelectedAssets = async () => {
+    const selectedAssets = assets.filter((asset) => selectedAssetKeys.has(asset.key) && !asset.isUsed);
+
+    if (selectedAssets.length === 0) {
+      setAdminMessage('Silinecek kullanılmayan görsel seçilmedi.');
+      return;
+    }
+
+    setIsDeletingSelectedAssets(true);
+
+    try {
+      const results = await Promise.all(
+        selectedAssets.map(async (asset) => {
+          const response = await authorizedFetch(`/api/assets/${encodeURIComponent(asset.key)}`, {
+            method: 'DELETE',
+          });
+
+          return { asset, response };
+        }),
+      );
+
+      if (results.some((result) => result.response.status === 401)) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      const deletedCount = results.filter((result) => result.response.ok).length;
+      const blockedCount = results.filter((result) => result.response.status === 409).length;
+
+      setSelectedAssetKeys(new Set());
+      await reloadAssets(assetViewMode);
+      setAdminMessage(
+        blockedCount > 0
+          ? `${deletedCount} görsel silindi, ${blockedCount} görsel kullanımda olduğu için atlandı.`
+          : `${deletedCount} kullanılmayan görsel silindi.`,
+      );
+    } catch {
+      setAdminMessage('Seçili görseller silinemedi. API bağlantısını kontrol edin.');
+    } finally {
+      setIsDeletingSelectedAssets(false);
+    }
   };
 
   const deleteAsset = async (asset: AssetItem) => {
@@ -1387,10 +2061,36 @@ function App() {
     await reloadAssets();
   };
 
+  const loadWpSourceSettings = async () => {
+    try {
+      const response = await authorizedFetch('/api/wp-source-settings');
+      const data = (await response.json()) as { settings?: WpSourceSettings };
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (!response.ok || !data.settings) {
+        setAdminMessage('WordPress kaynak ayarları yüklenemedi.');
+        return;
+      }
+
+      const settings = { ...data.settings, password: '' };
+      setWpSourceSettings(settings);
+      setWpSourceSettingsForm(settings);
+    } catch {
+      setAdminMessage('WordPress kaynak ayarları yüklenemedi. API bağlantısını kontrol edin.');
+    }
+  };
+
   const openSettingsModal = () => {
     setActiveSettingsTab('footer');
     setIsSettingsModalOpen(true);
     setAdminMessage('');
+    setWpSourceTestResult(null);
+    void loadWpSourceSettings();
   };
 
   const closeSettingsModal = () => {
@@ -1459,6 +2159,132 @@ function App() {
     setContactSettingsForm((currentForm) => ({
       ...currentForm,
       [field]: value,
+    }));
+  };
+
+  const selectQuoteQuestionCategory = (categoryKey: string) => {
+    setQuoteQuestionCategoryKey(categoryKey);
+    setQuoteQuestionProductKey('');
+  };
+
+  const selectQuoteQuestionProduct = (productKey: string) => {
+    setQuoteQuestionProductKey(productKey);
+  };
+
+  const updateQuoteQuestionFormCategory = (categoryKey: string) => {
+    const firstProductKey = adminProducts.find((product) => product.categoryKey === categoryKey)?.key ?? '';
+
+    setQuoteQuestionFormCategoryKey(categoryKey);
+    setQuoteQuestionFormProductKey(firstProductKey);
+  };
+
+  const openNewQuoteQuestionModal = () => {
+    const categoryKey = quoteQuestionCategoryKey || adminCategories[0]?.key || '';
+    const productKey =
+      quoteQuestionProductKey || adminProducts.find((product) => product.categoryKey === categoryKey)?.key || '';
+
+    setEditingQuoteQuestionId(null);
+    setQuoteQuestionFormCategoryKey(categoryKey);
+    setQuoteQuestionFormProductKey(productKey);
+    setQuoteQuestionForm(createEmptyQuoteQuestionForm());
+    setIsQuoteQuestionModalOpen(true);
+    setAdminMessage('');
+  };
+
+  const openEditQuoteQuestionModal = (question: QuoteQuestion) => {
+    setEditingQuoteQuestionId(question.id);
+    setQuoteQuestionFormCategoryKey(question.categoryKey);
+    setQuoteQuestionFormProductKey(question.productKey ?? '');
+    setQuoteQuestionForm({
+      id: question.id,
+      question: question.question,
+      description: question.description,
+      answerType: question.answerType,
+      options: question.options.join('\n'),
+      defaultValue: question.defaultValue,
+      maxLength: question.maxLength ? String(question.maxLength) : '',
+      decimalPlaces: String(question.decimalPlaces ?? 0),
+      isRequired: question.isRequired,
+      isActive: question.isActive,
+    });
+    setIsQuoteQuestionModalOpen(true);
+    setAdminMessage('');
+  };
+
+  const closeQuoteQuestionModal = () => {
+    setIsQuoteQuestionModalOpen(false);
+    setEditingQuoteQuestionId(null);
+    setQuoteQuestionForm(createEmptyQuoteQuestionForm());
+  };
+
+  const updateQuoteQuestionForm = (
+    field: keyof QuoteQuestionFormState,
+    value: string | boolean,
+  ) => {
+    setQuoteQuestionForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+      ...(field === 'answerType' && (value === 'text' || value === 'number') ? { options: '' } : {}),
+      ...(field === 'answerType' && value !== 'text' ? { maxLength: '' } : {}),
+      ...(field === 'answerType' && value !== 'number' ? { decimalPlaces: '0' } : {}),
+    }));
+  };
+
+  const createDefaultQuoteAnswers = (categoryKey: string, productKey: string) => {
+    return quoteQuestions
+      .filter((question) => question.categoryKey === categoryKey && question.productKey === productKey && question.isActive)
+      .reduce<Record<string, string | string[]>>((answers, question) => {
+        if (!question.defaultValue.trim()) {
+          return answers;
+        }
+
+        if (question.answerType === 'multiple') {
+          answers[question.id] = question.defaultValue
+            .split(/\n|,/)
+            .map((value) => value.trim())
+            .filter((value) => question.options.includes(value));
+        } else if (question.answerType === 'single') {
+          answers[question.id] = question.options.includes(question.defaultValue.trim()) ? question.defaultValue.trim() : '';
+        } else if (question.answerType === 'number') {
+          const defaultNumber = Number(question.defaultValue.replace(',', '.'));
+          answers[question.id] = Number.isFinite(defaultNumber)
+            ? defaultNumber.toFixed(question.decimalPlaces)
+            : '';
+        } else {
+          answers[question.id] = question.defaultValue;
+        }
+
+        return answers;
+      }, {});
+  };
+
+  const updateQuoteAnswer = (question: QuoteQuestion, value: string) => {
+    setQuoteAnswers((currentAnswers) => {
+      if (question.answerType !== 'multiple') {
+        return {
+          ...currentAnswers,
+          [question.id]: value,
+        };
+      }
+
+      const currentValues: string[] = Array.isArray(currentAnswers[question.id])
+        ? (currentAnswers[question.id] as string[])
+        : [];
+      const nextValues = currentValues.includes(value)
+        ? currentValues.filter((currentValue) => currentValue !== value)
+        : [...currentValues, value];
+
+      return {
+        ...currentAnswers,
+        [question.id]: nextValues,
+      };
+    });
+  };
+
+  const updateWpSourceSettingsForm = (field: keyof WpSourceSettings, value: string | boolean) => {
+    setWpSourceSettingsForm((currentForm) => ({
+      ...currentForm,
+      [field]: field === 'port' ? Number(value) : value,
     }));
   };
 
@@ -1693,6 +2519,265 @@ function App() {
     }
   };
 
+  const saveQuoteQuestion = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!quoteQuestionFormCategoryKey) {
+      setAdminMessage('Lütfen soru tanımlanacak kategoriyi seçin.');
+      return;
+    }
+
+    if (!quoteQuestionFormProductKey) {
+      setAdminMessage('Lütfen soru tanımlanacak ürünü seçin.');
+      return;
+    }
+
+    const nextOptions = quoteQuestionForm.options
+      .split(/\n|,/)
+      .map((option) => option.trim())
+      .filter(Boolean);
+    const maxLength = Number(quoteQuestionForm.maxLength);
+    const decimalPlaces = Number(quoteQuestionForm.decimalPlaces);
+    const nextQuestion = {
+      id: quoteQuestionForm.id,
+      categoryKey: quoteQuestionFormCategoryKey,
+      productKey: quoteQuestionFormProductKey,
+      question: quoteQuestionForm.question.trim(),
+      description: quoteQuestionForm.description.trim(),
+      answerType: quoteQuestionForm.answerType,
+      options: nextOptions,
+      defaultValue: quoteQuestionForm.defaultValue.trim(),
+      maxLength:
+        quoteQuestionForm.answerType === 'text' && Number.isInteger(maxLength) && maxLength > 0 ? maxLength : 0,
+      decimalPlaces:
+        quoteQuestionForm.answerType === 'number' && Number.isInteger(decimalPlaces) && decimalPlaces >= 0
+          ? decimalPlaces
+          : 0,
+      isRequired: quoteQuestionForm.isRequired,
+      sortOrder: 1,
+      isActive: quoteQuestionForm.isActive,
+    };
+
+    if (!nextQuestion.question) {
+      setAdminMessage('Lütfen soru metnini girin.');
+      return;
+    }
+
+    if (
+      (nextQuestion.answerType === 'single' || nextQuestion.answerType === 'multiple') &&
+      nextQuestion.options.length === 0
+    ) {
+      setAdminMessage('Tek seçim veya çoklu seçim soruları için en az bir seçenek girin.');
+      return;
+    }
+
+    if (quoteQuestionForm.answerType === 'text' && quoteQuestionForm.maxLength.trim() && nextQuestion.maxLength === 0) {
+      setAdminMessage('Metin soruları için maksimum karakter pozitif tam sayı olmalı.');
+      return;
+    }
+
+    if (
+      quoteQuestionForm.answerType === 'number' &&
+      (!Number.isInteger(decimalPlaces) || decimalPlaces < 0 || decimalPlaces > 6)
+    ) {
+      setAdminMessage('Sayı soruları için küsürat basamağı 0 ile 6 arasında olmalı.');
+      return;
+    }
+
+    const existingProductQuestions = quoteQuestions
+      .filter(
+        (question) =>
+          question.categoryKey === quoteQuestionFormCategoryKey &&
+          question.productKey === quoteQuestionFormProductKey &&
+          question.id !== editingQuoteQuestionId,
+      )
+      .sort((firstQuestion, secondQuestion) => firstQuestion.sortOrder - secondQuestion.sortOrder);
+    const editedQuestion = editingQuoteQuestionId
+      ? quoteQuestions.find((question) => question.id === editingQuoteQuestionId)
+      : null;
+    const questions = [
+      ...existingProductQuestions.map((question, index) => ({
+        ...question,
+        productKey: quoteQuestionFormProductKey,
+        sortOrder: index + 1,
+      })),
+      {
+        ...nextQuestion,
+        sortOrder: editedQuestion?.sortOrder ?? existingProductQuestions.length + 1,
+      },
+    ]
+      .sort((firstQuestion, secondQuestion) => firstQuestion.sortOrder - secondQuestion.sortOrder)
+      .map((question, index) => ({
+        ...question,
+        sortOrder: index + 1,
+      }));
+
+    setIsSavingQuoteQuestions(true);
+
+    try {
+      const response = await authorizedFetch('/api/quote-questions', {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          categoryKey: quoteQuestionFormCategoryKey,
+          productKey: quoteQuestionFormProductKey,
+          questions,
+        }),
+      });
+      const data = (await response.json()) as { questions?: QuoteQuestion[] };
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (!response.ok || !data.questions) {
+        setAdminMessage('Teklif soruları kaydedilemedi.');
+        return;
+      }
+
+      setQuoteQuestions((currentQuestions) => [
+        ...currentQuestions.filter(
+          (question) =>
+            question.categoryKey !== quoteQuestionFormCategoryKey || question.productKey !== quoteQuestionFormProductKey,
+        ),
+        ...(data.questions ?? []),
+      ]);
+      setQuoteQuestionCategoryKey(quoteQuestionFormCategoryKey);
+      setQuoteQuestionProductKey(quoteQuestionFormProductKey);
+      setAdminMessage(editingQuoteQuestionId ? 'Teklif sorusu güncellendi.' : 'Teklif sorusu eklendi.');
+      closeQuoteQuestionModal();
+    } catch {
+      setAdminMessage('Teklif soruları kaydedilemedi. API bağlantısını kontrol edin.');
+    } finally {
+      setIsSavingQuoteQuestions(false);
+    }
+  };
+
+  const createWpSourcePayload = () => ({
+    host: wpSourceSettingsForm.host.trim(),
+    port: Number(wpSourceSettingsForm.port) || 3306,
+    database: wpSourceSettingsForm.database.trim(),
+    username: wpSourceSettingsForm.username.trim(),
+    password: wpSourceSettingsForm.password.trim(),
+    tablePrefix: wpSourceSettingsForm.tablePrefix.trim() || 'wp_',
+    oldSiteUrl: wpSourceSettingsForm.oldSiteUrl.trim(),
+    includeDrafts: wpSourceSettingsForm.includeDrafts,
+  });
+
+  const getWpSourceFormErrors = () => {
+    const errors: string[] = [];
+
+    if (!wpSourceSettingsForm.host.trim()) {
+      errors.push('MySQL host');
+    }
+
+    if (!wpSourceSettingsForm.database.trim()) {
+      errors.push('veritabanı');
+    }
+
+    if (!wpSourceSettingsForm.username.trim()) {
+      errors.push('kullanıcı');
+    }
+
+    if (!Number.isInteger(Number(wpSourceSettingsForm.port)) || Number(wpSourceSettingsForm.port) <= 0 || Number(wpSourceSettingsForm.port) > 65535) {
+      errors.push('port');
+    }
+
+    if (!/^[A-Za-z0-9_]*$/.test(wpSourceSettingsForm.tablePrefix.trim())) {
+      errors.push('tablo prefix');
+    }
+
+    return errors;
+  };
+
+  const saveWpSourceSettings = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formErrors = getWpSourceFormErrors();
+
+    if (formErrors.length > 0) {
+      setAdminMessage(`WordPress MySQL ayarlarında eksik veya hatalı alan var: ${formErrors.join(', ')}.`);
+      return;
+    }
+
+    setIsSavingWpSourceSettings(true);
+
+    try {
+      const response = await authorizedFetch('/api/wp-source-settings', {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(createWpSourcePayload()),
+      });
+      const data = (await response.json()) as { settings?: WpSourceSettings; fields?: string[] };
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (!response.ok || !data.settings) {
+        const fields = data.fields?.length ? ` Hatalı alanlar: ${data.fields.join(', ')}.` : '';
+        setAdminMessage(`WordPress MySQL ayarları kaydedilemedi.${fields}`);
+        return;
+      }
+
+      const settings = { ...data.settings, password: '' };
+      setWpSourceSettings(settings);
+      setWpSourceSettingsForm(settings);
+      setAdminMessage('WordPress MySQL ayarları kaydedildi.');
+    } catch {
+      setAdminMessage('WordPress MySQL ayarları kaydedilemedi. API bağlantısını kontrol edin.');
+    } finally {
+      setIsSavingWpSourceSettings(false);
+    }
+  };
+
+  const testWpSourceSettings = async () => {
+    const formErrors = getWpSourceFormErrors();
+
+    if (formErrors.length > 0) {
+      setAdminMessage(`Test için eksik veya hatalı alan var: ${formErrors.join(', ')}.`);
+      return;
+    }
+
+    setIsTestingWpSourceSettings(true);
+    setWpSourceTestResult(null);
+
+    try {
+      const response = await authorizedFetch('/api/wp-source-settings/test', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(createWpSourcePayload()),
+      });
+      const data = (await response.json()) as WpSourceTestResult;
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      setWpSourceTestResult(data);
+      setAdminMessage(
+        data.connected
+          ? 'WordPress MySQL bağlantısı başarılı.'
+          : `WordPress MySQL bağlantısı kurulamadı.${data.error ? ` Hata: ${data.error}` : ''}`,
+      );
+    } catch {
+      setAdminMessage('WordPress MySQL bağlantısı test edilemedi. API bağlantısını kontrol edin.');
+    } finally {
+      setIsTestingWpSourceSettings(false);
+    }
+  };
+
   const submitServiceRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmittingServiceRequest(true);
@@ -1738,6 +2823,73 @@ function App() {
     } finally {
       setIsSubmittingServiceRequest(false);
     }
+  };
+
+  const saveBlogPost = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const seo = calculateBlogSeo(blogPostForm);
+    const payload = {
+      key: blogPostForm.key.trim(),
+      title: blogPostForm.title.trim(),
+      summary: blogPostForm.summary.trim(),
+      targetKeyword: blogPostForm.targetKeyword.trim(),
+      content: blogPostForm.content.trim(),
+      slug: blogPostForm.slug.trim(),
+      metaTitle: blogPostForm.metaTitle.trim(),
+      metaKeywords: blogPostForm.metaKeywords.trim(),
+      metaDescription: blogPostForm.metaDescription.trim(),
+      image: blogPostForm.image.trim(),
+      imageAlt: blogPostForm.imageAlt.trim(),
+      oldUrl: blogPostForm.oldUrl.trim(),
+      seoScore: seo.score,
+      status: blogPostForm.status,
+      publishedAt: blogPostForm.publishedAt.trim(),
+      categories: blogPostForm.categories,
+      tags: blogPostForm.tags
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    };
+
+    const response = await authorizedFetch(
+      editingBlogKey ? `/api/blog-posts/${encodeURIComponent(editingBlogKey)}` : '/api/blog-posts',
+      {
+        method: editingBlogKey ? 'PUT' : 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+
+    if (!response.ok) {
+      setAdminMessage('Blog yazısı kaydedilemedi. Lütfen zorunlu alanları kontrol edin.');
+      return;
+    }
+
+    await reloadAdminCatalog();
+    setAdminMessage(editingBlogKey ? 'Blog yazısı güncellendi.' : 'Yeni blog yazısı eklendi.');
+    closeBlogModal();
+  };
+
+  const deleteBlogPost = async () => {
+    if (!editingBlogKey) {
+      return;
+    }
+
+    const response = await authorizedFetch(`/api/blog-posts/${encodeURIComponent(editingBlogKey)}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      setAdminMessage('Blog yazısı silinemedi.');
+      return;
+    }
+
+    await reloadAdminCatalog();
+    setAdminMessage('Blog yazısı silindi.');
+    closeBlogModal();
   };
 
   const saveProduct = async (event: FormEvent<HTMLFormElement>) => {
@@ -1927,14 +3079,7 @@ function App() {
 
             <div className="adminLoginHeader">
               <p>HHS Yönetim</p>
-              <h1>Sign in</h1>
-              <span>or use your account</span>
-            </div>
-
-            <div className="adminLoginSocials" aria-hidden="true">
-              <span>f</span>
-              <span>G</span>
-              <span>in</span>
+              <h1>Kullanıcı Girişi</h1>
             </div>
 
             <form className="adminLoginForm" onSubmit={submitLogin}>
@@ -1961,12 +3106,12 @@ function App() {
                 />
               </label>
 
-              <a href="mailto:info@hhsotomatikkapi.com">Forgot your password?</a>
+              <a href="mailto:info@hhsotomatikkapi.com">Parolamı unuttum</a>
 
               {adminMessage && <div className="adminLoginError">{adminMessage}</div>}
 
               <button type="submit" disabled={isLoggingIn}>
-                {isLoggingIn ? 'Giriş yapılıyor...' : 'Sign In'}
+                {isLoggingIn ? 'Devam ediliyor...' : 'Devam Et >'}
               </button>
             </form>
           </div>
@@ -1991,9 +3136,14 @@ function App() {
     return (
       <main className="adminShell">
         <aside className="adminSidebar">
-          <a className="adminLogo" href="/" aria-label="HHS ana sayfa">
-            <img src="/apple-touch-icon.png" alt="HHS Otomatik Kapı" />
-          </a>
+          <div className="adminBrandRow">
+            <a className="adminLogo" href="/" aria-label="HHS ana sayfa">
+              <img src="/apple-touch-icon.png" alt="HHS Otomatik Kapı" />
+            </a>
+            <a className="adminSiteLink" href="/" target="_blank" rel="noreferrer" aria-label="Siteye git">
+              <ExternalLink size={18} strokeWidth={2.3} />
+            </a>
+          </div>
 
           <nav className="adminNav" aria-label="Panel menüsü">
             {canAccessModule('products') && (
@@ -2004,6 +3154,39 @@ function App() {
               >
                 <Package size={20} strokeWidth={2.2} />
                 <span>Ürünler</span>
+              </button>
+            )}
+            {canAccessModule('blog') && (
+              <button
+                className={`adminNavItem${activeAdminSection === 'blog' ? ' active' : ''}`}
+                type="button"
+                onClick={() => setAdminSection('blog')}
+              >
+                <FileText size={20} strokeWidth={2.2} />
+                <span>Blog</span>
+              </button>
+            )}
+            {canAccessModule('products') && (
+              <button
+                className={`adminNavItem${activeAdminSection === 'assets' ? ' active' : ''}`}
+                type="button"
+                onClick={() => {
+                  setAdminSection('assets');
+                  void reloadAssets();
+                }}
+              >
+                <Upload size={20} strokeWidth={2.2} />
+                <span>Görsel Yönetimi</span>
+              </button>
+            )}
+            {canAccessModule('settings') && (
+              <button
+                className={`adminNavItem${activeAdminSection === 'quoteQuestions' ? ' active' : ''}`}
+                type="button"
+                onClick={() => setAdminSection('quoteQuestions')}
+              >
+                <FileText size={20} strokeWidth={2.2} />
+                <span>Teklif Soruları</span>
               </button>
             )}
             {canAccessModule('users') && (
@@ -2069,9 +3252,15 @@ function App() {
               <h1>
                 {activeAdminSection === 'products'
                   ? 'Ürünler'
-                  : activeAdminSection === 'users'
-                    ? 'Kullanıcılar'
-                    : 'Veritabanı'}
+                  : activeAdminSection === 'blog'
+                    ? 'Blog'
+                    : activeAdminSection === 'assets'
+                      ? 'Görsel Yönetimi'
+                      : activeAdminSection === 'quoteQuestions'
+                        ? 'Teklif Soruları'
+                        : activeAdminSection === 'users'
+                          ? 'Kullanıcılar'
+                          : 'Veritabanı'}
               </h1>
             </div>
             {activeAdminSection === 'products' ? (
@@ -2079,11 +3268,14 @@ function App() {
                 <button type="button" onClick={openCategoryModal}>
                   Kategoriler
                 </button>
-                <button type="button" onClick={openAssetManager}>
-                  Görsel Yönetimi
-                </button>
                 <button type="button" onClick={openNewProductModal}>
                   Yeni Ürün
+                </button>
+              </div>
+            ) : activeAdminSection === 'blog' ? (
+              <div className="adminTopbarActions">
+                <button type="button" onClick={openNewBlogModal}>
+                  Yeni Blog Yazısı
                 </button>
               </div>
             ) : activeAdminSection === 'users' ? (
@@ -2092,13 +3284,27 @@ function App() {
                   Yeni Kullanıcı
                 </button>
               </div>
-            ) : (
+            ) : activeAdminSection === 'assets' ? (
+              <div className="adminTopbarActions">
+                <button type="button" onClick={showAllAssets} disabled={isLoadingAssets}>
+                  {isLoadingAssets ? 'Yükleniyor...' : 'Görselleri Yenile'}
+                </button>
+                <button type="button" onClick={showUnusedAssets} disabled={isLoadingAssets}>
+                  Kullanılmayanları Göster
+                </button>
+                {selectedAssetKeys.size > 0 && (
+                  <button type="button" onClick={deleteSelectedAssets} disabled={isDeletingSelectedAssets}>
+                    {isDeletingSelectedAssets ? 'Siliniyor...' : `Seçili Kullanılmayanları Sil (${selectedAssetKeys.size})`}
+                  </button>
+                )}
+              </div>
+            ) : activeAdminSection === 'database' ? (
               <div className="adminTopbarActions">
                 <button type="button" onClick={loadDatabaseTables} disabled={isLoadingDatabaseTables}>
                   {isLoadingDatabaseTables ? 'Yükleniyor...' : 'Yenile'}
                 </button>
               </div>
-            )}
+            ) : null}
           </header>
 
           <AnimatePresence>
@@ -2155,6 +3361,242 @@ function App() {
                   </button>
                 ))}
               </div>
+            </>
+          ) : activeAdminSection === 'blog' ? (
+            <>
+              <div className="adminStats">
+                <article>
+                  <span>Toplam Yazı</span>
+                  <strong>{blogPosts.length}</strong>
+                </article>
+                <article>
+                  <span>Yayında</span>
+                  <strong>{blogPosts.filter((post) => post.status === 'published').length}</strong>
+                </article>
+                <article>
+                  <span>Kategori</span>
+                  <strong>{blogCategories.length}</strong>
+                </article>
+              </div>
+
+              <div className="adminProducts">
+                {blogPosts.map((post) => (
+                  <button
+                    className="adminProductCard adminBlogCard"
+                    key={post.key}
+                    type="button"
+                    onClick={() => openEditBlogModal(post)}
+                  >
+                    {post.image ? <img src={post.image} alt={post.imageAlt || post.title} /> : <div className="adminBlogImageFallback" />}
+                    <div>
+                      <span>{post.status === 'published' ? 'Yayında' : 'Taslak'} / SEO %{post.seoScore}</span>
+                      <h2>{post.title}</h2>
+                      <p>{post.summary}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : activeAdminSection === 'assets' ? (
+            <>
+              <div className="adminStats">
+                <article>
+                  <span>Toplam Görsel</span>
+                  <strong>{visibleAssets.length}</strong>
+                </article>
+                <article>
+                  <span>Toplam Boyut</span>
+                  <strong>{Math.round(visibleAssets.reduce((total, asset) => total + asset.size, 0) / 1024)} KB</strong>
+                </article>
+                <article>
+                  <span>Durum</span>
+                  <strong>
+                    {selectedVisibleAssetCount > 0
+                      ? `${selectedVisibleAssetCount} Seçili`
+                      : assetViewMode === 'unused'
+                        ? 'Kullanılmayan'
+                        : isLoadingAssets
+                          ? 'Yükleniyor'
+                          : 'Hazır'}
+                  </strong>
+                </article>
+              </div>
+
+              <div className="adminAssetManagerPanel">
+                <div className="adminAssetFolders" aria-label="Görsel klasörleri">
+                  {assetFolderFilters.map((folder) => {
+                    const folderCount =
+                      folder.key === 'all'
+                        ? assets.length
+                        : assets.filter((asset) => getAssetFolderKey(asset.key) === folder.key).length;
+
+                    return (
+                      <button
+                        className={activeAssetFolder === folder.key ? 'active' : ''}
+                        key={folder.key}
+                        type="button"
+                        onClick={() => setActiveAssetFolder(folder.key)}
+                      >
+                        <strong>{folder.label}</strong>
+                        <span>{folderCount}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="adminAssetManagerBody">
+                  {isLoadingAssets ? (
+                    <p>Görseller yükleniyor...</p>
+                  ) : visibleAssets.length === 0 ? (
+                    <p>R2 üzerinde kayıtlı görsel bulunamadı.</p>
+                  ) : (
+                    <div className="adminAssetGrid">
+                      {visibleAssets.map((asset) => (
+                        <article className="adminAssetCard" key={asset.key}>
+                          <label className="adminAssetSelect">
+                            <input
+                              type="checkbox"
+                              checked={selectedAssetKeys.has(asset.key)}
+                              disabled={Boolean(asset.isUsed)}
+                              onChange={() => toggleAssetSelection(asset.key)}
+                            />
+                            <span>{asset.isUsed ? 'Kullanımda' : 'Seç'}</span>
+                          </label>
+                          <button
+                            className="adminAssetPreview"
+                            type="button"
+                            aria-label={`${asset.key} görselini önizle`}
+                            onClick={() => setImagePreview({ title: asset.key, url: asset.url })}
+                          >
+                            <img src={asset.url} alt="" />
+                          </button>
+                          <strong>{asset.key}</strong>
+                          <span>{getAssetFolderLabel(asset.key)} / {Math.round(asset.size / 1024)} KB</span>
+                          <span>{getAssetUsageLabel(asset)}</span>
+                          <button type="button" onClick={() => deleteAsset(asset)}>
+                            Sil
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : activeAdminSection === 'quoteQuestions' ? (
+            <>
+              <div className="adminStats">
+                <article>
+                  <span>Kategori</span>
+                  <strong>{adminCategories.length}</strong>
+                </article>
+                <article>
+                  <span>Toplam Soru</span>
+                  <strong>{quoteQuestions.length}</strong>
+                </article>
+                <article>
+                  <span>Aktif Soru</span>
+                  <strong>{quoteQuestions.filter((question) => question.isActive).length}</strong>
+                </article>
+              </div>
+
+              <section className="adminPanelForm adminQuoteQuestionPanel">
+                <div className="adminQuoteQuestionToolbar">
+                  <label>
+                    Kategori
+                    <select
+                      value={quoteQuestionCategoryKey}
+                      onChange={(event) => selectQuoteQuestionCategory(event.target.value)}
+                    >
+                      <option value="">Tüm kategoriler</option>
+                      {adminCategories.map((category) => (
+                        <option key={category.key} value={category.key}>
+                          {category.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Ürün
+                    <select
+                      value={quoteQuestionProductKey}
+                      disabled={!quoteQuestionCategoryKey || quoteQuestionProducts.length === 0}
+                      onChange={(event) => selectQuoteQuestionProduct(event.target.value)}
+                    >
+                      <option value="">Tüm ürünler</option>
+                      {quoteQuestionProducts.map((product) => (
+                        <option key={product.key} value={product.key}>
+                          {product.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <button type="button" onClick={openNewQuoteQuestionModal}>
+                    Yeni
+                  </button>
+                </div>
+
+                {quoteQuestionCategoryKey && quoteQuestionProducts.length === 0 && (
+                  <p className="adminFormHint">Bu kategoriye bağlı ürün bulunamadı.</p>
+                )}
+
+                {filteredQuoteQuestions.length === 0 ? (
+                  <div className="adminQuoteQuestionEmpty">
+                    <strong>Soru bulunamadı.</strong>
+                    <span>Seçili filtre için henüz teklif sorusu eklenmemiş.</span>
+                  </div>
+                ) : (
+                  <div className="adminQuoteQuestionList">
+                    {filteredQuoteQuestions.map((question) => (
+                      <article className="adminQuoteQuestionListCard" key={question.id}>
+                        <div className="adminQuoteQuestionListCardHeader">
+                          <div>
+                            <span>{getAdminCategoryTitle(question.categoryKey)}</span>
+                            <span>{getAdminProductTitle(question.productKey)}</span>
+                            <span>{getQuoteQuestionAnswerTypeLabel(question.answerType)}</span>
+                            {question.isRequired && <span>Zorunlu</span>}
+                          </div>
+                          <span className={question.isActive ? 'adminStatusPill active' : 'adminStatusPill'}>
+                            {question.isActive ? 'Aktif' : 'Pasif'}
+                          </span>
+                        </div>
+                        <h3>{question.question}</h3>
+                        {question.description && <p>{question.description}</p>}
+                        <dl className="adminQuoteQuestionMeta">
+                          <div>
+                            <dt>Sıra</dt>
+                            <dd>{question.sortOrder}</dd>
+                          </div>
+                          <div>
+                            <dt>Seçenek</dt>
+                            <dd>{question.options.length ? question.options.join(', ') : 'Yok'}</dd>
+                          </div>
+                          <div>
+                            <dt>Varsayılan</dt>
+                            <dd>{question.defaultValue || 'Yok'}</dd>
+                          </div>
+                          <div>
+                            <dt>Kural</dt>
+                            <dd>
+                              {question.answerType === 'text' && question.maxLength
+                                ? `Maks. ${question.maxLength} karakter`
+                                : question.answerType === 'number'
+                                  ? `${question.decimalPlaces} küsürat`
+                                  : question.isRequired
+                                    ? 'Zorunlu'
+                                    : 'Yok'}
+                            </dd>
+                          </div>
+                        </dl>
+                        <button type="button" onClick={() => openEditQuoteQuestionModal(question)}>
+                          Düzenle
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
             </>
           ) : activeAdminSection === 'users' ? (
             <>
@@ -2521,7 +3963,7 @@ function App() {
                   )}
                 </div>
                 <div className="adminFormActions">
-                  <button type="button" onClick={reloadAssets} disabled={isLoadingAssets}>
+                  <button type="button" onClick={showAllAssets} disabled={isLoadingAssets}>
                     Yenile
                   </button>
                   <button type="button" onClick={() => setIsAssetManagerOpen(false)}>
@@ -2555,7 +3997,11 @@ function App() {
                   <div>
                     <p>Ayarlar</p>
                     <h2 id="settings-modal-title">
-                      {activeSettingsTab === 'footer' ? 'Footer' : 'İletişim Bilgileri'}
+                      {activeSettingsTab === 'footer'
+                        ? 'Footer'
+                        : activeSettingsTab === 'contact'
+                          ? 'İletişim Bilgileri'
+                          : 'WordPress MySQL Kaynağı'}
                     </h2>
                   </div>
                   <button type="button" aria-label="Modalı kapat" onClick={closeSettingsModal}>
@@ -2578,6 +4024,13 @@ function App() {
                       onClick={() => setActiveSettingsTab('contact')}
                     >
                       İletişim
+                    </button>
+                    <button
+                      className={activeSettingsTab === 'wordpress' ? 'active' : ''}
+                      type="button"
+                      onClick={() => setActiveSettingsTab('wordpress')}
+                    >
+                      WordPress MySQL
                     </button>
                   </aside>
 
@@ -2603,7 +4056,7 @@ function App() {
                         </button>
                       </div>
                     </form>
-                  ) : (
+                  ) : activeSettingsTab === 'contact' ? (
                     <form className="adminProductForm adminFooterForm" onSubmit={saveContactSettings}>
                       {contactSettingFields.map((field) => (
                         <label
@@ -2641,6 +4094,74 @@ function App() {
                         </button>
                         <button type="submit" disabled={isSavingContactSettings}>
                           {isSavingContactSettings ? 'Kaydediliyor...' : 'Kaydet'}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <form className="adminProductForm adminFooterForm" onSubmit={saveWpSourceSettings}>
+                      {wpSourceFields.map((field) => (
+                        <label
+                          className={field.key === 'oldSiteUrl' ? 'adminFormWide' : ''}
+                          key={field.key}
+                        >
+                          {field.label}
+                          <input
+                            type={field.type ?? 'text'}
+                            value={wpSourceSettingsForm[field.key] as string | number}
+                            onChange={(event) => updateWpSourceSettingsForm(field.key, event.target.value)}
+                            placeholder={field.placeholder}
+                            min={field.key === 'port' ? 1 : undefined}
+                            max={field.key === 'port' ? 65535 : undefined}
+                          />
+                          {field.key === 'password' && wpSourceSettings.hasPassword && !wpSourceSettingsForm.password && <small>Şifre kayıtlı.</small>}
+                        </label>
+                      ))}
+
+                      <label className="adminToggleRow adminFormWide">
+                        <span>
+                          Taslak yazıları da dahil et
+                          <small>Import script’i çalıştırıldığında WordPress draft yazılarını panelde taslak olarak alır.</small>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={wpSourceSettingsForm.includeDrafts}
+                          onChange={(event) => updateWpSourceSettingsForm('includeDrafts', event.target.checked)}
+                        />
+                      </label>
+
+                      {wpSourceTestResult && (
+                        <div className="adminWpTestResult adminFormWide">
+                          <strong className={wpSourceTestResult.connected ? 'success' : 'error'}>
+                            {wpSourceTestResult.connected ? 'Bağlantı başarılı' : 'Bağlantı başarısız'}
+                          </strong>
+                          {wpSourceTestResult.connected ? (
+                            <>
+                              <span>{wpSourceTestResult.totalTables} tablo bulundu.</span>
+                              <span>{wpSourceTestResult.postCount} WordPress yazısı bulundu.</span>
+                              {wpSourceTestResult.tables.length > 0 && (
+                                <small>Tablolar: {wpSourceTestResult.tables.slice(0, 16).join(', ')}</small>
+                              )}
+                              {wpSourceTestResult.seoMetaKeys.length > 0 && (
+                                <small>
+                                  SEO meta: {wpSourceTestResult.seoMetaKeys.map((meta) => meta.meta_key).join(', ')}
+                                </small>
+                              )}
+                            </>
+                          ) : (
+                            <small>{wpSourceTestResult.error ?? 'Bağlantı kurulamadı.'}</small>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="adminFormActions">
+                        <button type="button" onClick={closeSettingsModal}>
+                          Vazgeç
+                        </button>
+                        <button type="button" onClick={testWpSourceSettings} disabled={isTestingWpSourceSettings}>
+                          {isTestingWpSourceSettings ? 'Test ediliyor...' : 'Test Et'}
+                        </button>
+                        <button type="submit" disabled={isSavingWpSourceSettings}>
+                          {isSavingWpSourceSettings ? 'Kaydediliyor...' : 'Kaydet'}
                         </button>
                       </div>
                     </form>
@@ -2805,6 +4326,206 @@ function App() {
                     </button>
                     <button type="submit" disabled={isSavingUser}>
                       {isSavingUser ? 'Kaydediliyor...' : editingUserId ? 'Güncelle' : 'Kaydet'}
+                    </button>
+                  </div>
+                </form>
+              </motion.section>
+            </motion.div>
+          )}
+
+          {isQuoteQuestionModalOpen && (
+            <motion.div
+              className="adminModalOverlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeQuoteQuestionModal}
+            >
+              <motion.section
+                className="adminProductModal adminQuoteQuestionModal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="quote-question-modal-title"
+                initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                onClick={(modalEvent) => modalEvent.stopPropagation()}
+              >
+                <div className="adminModalHeader">
+                  <div>
+                    <p>Teklif Soruları</p>
+                    <h2 id="quote-question-modal-title">
+                      {editingQuoteQuestionId ? 'Soruyu Düzenle' : 'Yeni Soru'}
+                    </h2>
+                  </div>
+                  <button type="button" aria-label="Modalı kapat" onClick={closeQuoteQuestionModal}>
+                    <X size={20} strokeWidth={2.2} />
+                  </button>
+                </div>
+
+                <form className="adminProductForm" onSubmit={saveQuoteQuestion}>
+                  <label>
+                    Kategori
+                    <select
+                      required
+                      value={quoteQuestionFormCategoryKey}
+                      disabled={Boolean(editingQuoteQuestionId)}
+                      onChange={(event) => updateQuoteQuestionFormCategory(event.target.value)}
+                    >
+                      <option value="" disabled>
+                        Kategori seçin
+                      </option>
+                      {adminCategories.map((category) => (
+                        <option key={category.key} value={category.key}>
+                          {category.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    Ürün
+                    <select
+                      required
+                      value={quoteQuestionFormProductKey}
+                      disabled={
+                        Boolean(editingQuoteQuestionId) ||
+                        !quoteQuestionFormCategoryKey ||
+                        quoteQuestionFormProducts.length === 0
+                      }
+                      onChange={(event) => setQuoteQuestionFormProductKey(event.target.value)}
+                    >
+                      <option value="" disabled>
+                        Ürün seçin
+                      </option>
+                      {quoteQuestionFormProducts.map((product) => (
+                        <option key={product.key} value={product.key}>
+                          {product.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {quoteQuestionFormCategoryKey && quoteQuestionFormProducts.length === 0 && (
+                    <p className="adminFormHint adminFormWide">Bu kategoriye bağlı ürün bulunamadı.</p>
+                  )}
+
+                  <label className="adminFormWide">
+                    Soru
+                    <input
+                      required
+                      value={quoteQuestionForm.question}
+                      onChange={(event) => updateQuoteQuestionForm('question', event.target.value)}
+                      placeholder="Örn: Ölçü bilgisi nedir?"
+                    />
+                  </label>
+
+                  <label className="adminFormWide">
+                    Açıklama
+                    <input
+                      value={quoteQuestionForm.description}
+                      onChange={(event) => updateQuoteQuestionForm('description', event.target.value)}
+                      placeholder="Kullanıcıya gösterilecek kısa açıklama"
+                    />
+                  </label>
+
+                  <label>
+                    Cevap tipi
+                    <select
+                      value={quoteQuestionForm.answerType}
+                      onChange={(event) =>
+                        updateQuoteQuestionForm(
+                          'answerType',
+                          event.target.value as QuoteQuestionFormState['answerType'],
+                        )
+                      }
+                    >
+                      <option value="text">Metin</option>
+                      <option value="single">Tek seçim</option>
+                      <option value="multiple">Çoklu seçim</option>
+                      <option value="number">Sayı</option>
+                    </select>
+                  </label>
+
+                  <label className="adminToggleRow">
+                    <span>Aktif</span>
+                    <input
+                      type="checkbox"
+                      checked={quoteQuestionForm.isActive}
+                      onChange={(event) => updateQuoteQuestionForm('isActive', event.target.checked)}
+                    />
+                  </label>
+
+                  <label className="adminToggleRow">
+                    <span>Zorunlu</span>
+                    <input
+                      type="checkbox"
+                      checked={quoteQuestionForm.isRequired}
+                      onChange={(event) => updateQuoteQuestionForm('isRequired', event.target.checked)}
+                    />
+                  </label>
+
+                  {quoteQuestionForm.answerType === 'text' && (
+                    <label>
+                      Maksimum karakter
+                      <input
+                        min={1}
+                        step={1}
+                        type="number"
+                        value={quoteQuestionForm.maxLength}
+                        onChange={(event) => updateQuoteQuestionForm('maxLength', event.target.value)}
+                        placeholder="Boş bırakılırsa limitsiz"
+                      />
+                    </label>
+                  )}
+
+                  {quoteQuestionForm.answerType === 'number' && (
+                    <label>
+                      Küsürat basamağı
+                      <input
+                        min={0}
+                        max={6}
+                        step={1}
+                        type="number"
+                        value={quoteQuestionForm.decimalPlaces}
+                        onChange={(event) => updateQuoteQuestionForm('decimalPlaces', event.target.value)}
+                        placeholder="0"
+                      />
+                    </label>
+                  )}
+
+                  {(quoteQuestionForm.answerType === 'single' || quoteQuestionForm.answerType === 'multiple') && (
+                    <label className="adminFormWide">
+                      Seçenekler
+                      <textarea
+                        rows={3}
+                        value={quoteQuestionForm.options}
+                        onChange={(event) => updateQuoteQuestionForm('options', event.target.value)}
+                        placeholder="Her satıra veya virgülle bir seçenek"
+                      />
+                    </label>
+                  )}
+
+                  <label className="adminFormWide">
+                    Varsayılan değer
+                    <input
+                      value={quoteQuestionForm.defaultValue}
+                      onChange={(event) => updateQuoteQuestionForm('defaultValue', event.target.value)}
+                      placeholder={
+                        quoteQuestionForm.answerType === 'multiple'
+                          ? 'Seçenekleri virgül veya satırla yazın'
+                          : 'Varsayılan cevap'
+                      }
+                    />
+                  </label>
+
+                  <div className="adminFormActions">
+                    <button type="button" onClick={closeQuoteQuestionModal}>
+                      Vazgeç
+                    </button>
+                    <button type="submit" disabled={isSavingQuoteQuestions}>
+                      {isSavingQuoteQuestions ? 'Kaydediliyor...' : editingQuoteQuestionId ? 'Güncelle' : 'Kaydet'}
                     </button>
                   </div>
                 </form>
@@ -2991,6 +4712,143 @@ function App() {
             </motion.div>
           )}
 
+          {isBlogModalOpen && (
+            <motion.div
+              className="adminModalOverlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeBlogModal}
+            >
+              <motion.section
+                className="adminProductModal adminBlogModal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="blog-modal-title"
+                initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                onClick={(modalEvent) => modalEvent.stopPropagation()}
+              >
+                <div className="adminModalHeader">
+                  <div>
+                    <p>Blog Yönetimi</p>
+                    <h2 id="blog-modal-title">{editingBlogKey ? 'Blog Yazısını Düzenle' : 'Yeni Blog Yazısı'}</h2>
+                  </div>
+                  <button type="button" aria-label="Modalı kapat" onClick={closeBlogModal}>
+                    <X size={20} strokeWidth={2.2} />
+                  </button>
+                </div>
+
+                <form className="adminProductForm adminBlogForm" onSubmit={saveBlogPost}>
+                  <label>
+                    Kayıt Anahtarı
+                    <input required disabled={Boolean(editingBlogKey)} value={blogPostForm.key} onChange={(event) => updateBlogPostForm('key', event.target.value)} />
+                  </label>
+                  <label>
+                    Durum
+                    <select value={blogPostForm.status} onChange={(event) => updateBlogPostForm('status', event.target.value as BlogPostFormState['status'])}>
+                      <option value="draft">Taslak</option>
+                      <option value="published">Yayında</option>
+                    </select>
+                  </label>
+                  <label>
+                    Blog Başlığı
+                    <input required value={blogPostForm.title} onChange={(event) => updateBlogTitle(event.target.value)} />
+                  </label>
+                  <label>
+                    Slug
+                    <input required value={blogPostForm.slug} onChange={(event) => updateBlogPostForm('slug', event.target.value)} />
+                  </label>
+                  <label>
+                    Hedef Kelime
+                    <input required value={blogPostForm.targetKeyword} onChange={(event) => updateBlogPostForm('targetKeyword', event.target.value)} />
+                  </label>
+                  <label>
+                    Yayın Tarihi
+                    <input value={blogPostForm.publishedAt} onChange={(event) => updateBlogPostForm('publishedAt', event.target.value)} placeholder="2026-05-02" />
+                  </label>
+                  <label className="adminFormWide">
+                    Blog Açıklaması / Özet
+                    <textarea required value={blogPostForm.summary} onChange={(event) => updateBlogPostForm('summary', event.target.value)} />
+                  </label>
+                  <label className="adminFormWide">
+                    Asıl Metin
+                    <textarea required className="adminLargeTextarea" value={blogPostForm.content} onChange={(event) => updateBlogPostForm('content', event.target.value)} />
+                  </label>
+                  <label>
+                    Meta Title
+                    <input required value={blogPostForm.metaTitle} onChange={(event) => updateBlogPostForm('metaTitle', event.target.value)} />
+                  </label>
+                  <label>
+                    Meta Keywords
+                    <input required value={blogPostForm.metaKeywords} onChange={(event) => updateBlogPostForm('metaKeywords', event.target.value)} />
+                  </label>
+                  <label className="adminFormWide">
+                    Meta Description
+                    <textarea required value={blogPostForm.metaDescription} onChange={(event) => updateBlogPostForm('metaDescription', event.target.value)} />
+                  </label>
+                  <label className="adminFormWide">
+                    Görsel URL
+                    <div className="adminImageUploadControl">
+                      <input value={blogPostForm.image} onChange={(event) => updateBlogPostForm('image', event.target.value)} />
+                      <input ref={blogImageInputRef} className="adminHiddenFileInput" type="file" accept="image/*" onChange={uploadBlogImage} />
+                      <button type="button" disabled={isUploadingBlogImage} onClick={() => blogImageInputRef.current?.click()}>
+                        <Upload size={17} strokeWidth={2.4} />
+                        {isUploadingBlogImage ? 'Yükleniyor...' : 'Görsel Yükle'}
+                      </button>
+                    </div>
+                  </label>
+                  <label>
+                    Görsel Alt Metni
+                    <input value={blogPostForm.imageAlt} onChange={(event) => updateBlogPostForm('imageAlt', event.target.value)} />
+                  </label>
+                  <label>
+                    Eski WordPress URL
+                    <input value={blogPostForm.oldUrl} onChange={(event) => updateBlogPostForm('oldUrl', event.target.value)} placeholder="https://eski-site.com/yazi/" />
+                  </label>
+                  <fieldset className="adminFormWide adminModulePicker">
+                    <legend>Kategoriler</legend>
+                    {blogCategories.map((category) => (
+                      <label key={category.key}>
+                        <input checked={blogPostForm.categories.includes(category.key)} type="checkbox" onChange={() => toggleBlogCategory(category.key)} />
+                        <span>{category.title}</span>
+                      </label>
+                    ))}
+                  </fieldset>
+                  <label className="adminFormWide">
+                    Etiketler
+                    <input value={blogPostForm.tags} onChange={(event) => updateBlogPostForm('tags', event.target.value)} placeholder="otomatik kapı, bariyer, motor" />
+                    {blogTags.length > 0 && (
+                      <small>Mevcut etiketler: {blogTags.slice(0, 8).map((tag) => tag.title).join(', ')}</small>
+                    )}
+                  </label>
+                  <div className="adminSeoPanel adminFormWide">
+                    <strong className={`adminSeoScore ${blogSeo.score >= 85 ? 'good' : blogSeo.score >= 60 ? 'medium' : 'bad'}`}>SEO %{blogSeo.score}</strong>
+                    {blogSeo.checks.map((check) => (
+                      <span className={check.passed ? 'passed' : 'failed'} key={check.label}>
+                        {check.passed ? '✓' : '×'} {check.label}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="adminFormActions">
+                    {editingBlogKey && (
+                      <button className="dangerButton" type="button" onClick={deleteBlogPost}>
+                        Sil
+                      </button>
+                    )}
+                    <span className={`adminSeoFooterScore ${blogSeo.score >= 85 ? 'good' : blogSeo.score >= 60 ? 'medium' : 'bad'}`}>
+                      SEO %{blogSeo.score}
+                    </span>
+                    <button type="button" onClick={closeBlogModal}>Vazgeç</button>
+                    <button type="submit">{editingBlogKey ? 'Güncelle' : 'Kaydet'}</button>
+                  </div>
+                </form>
+              </motion.section>
+            </motion.div>
+          )}
+
           {isProductModalOpen && (
             <motion.div
               className="adminModalOverlay"
@@ -3172,6 +5030,35 @@ function App() {
     );
   }
 
+  if (blogSlug) {
+    return (
+      <main className="page blogDetailPage">
+        <article className="blogDetail">
+          <a className="blogBackLink" href="/">Ana sayfaya dön</a>
+          {selectedBlogPost ? (
+            <>
+              {selectedBlogPost.image && <img src={selectedBlogPost.image} alt={selectedBlogPost.imageAlt || selectedBlogPost.title} />}
+              <p className="eyebrow">{selectedBlogPost.categories[0]?.title ?? 'Blog'}</p>
+              <h1>{selectedBlogPost.title}</h1>
+              <p className="blogDetailSummary">{selectedBlogPost.summary}</p>
+              <div className="blogDetailMeta">
+                <span>SEO %{selectedBlogPost.seoScore}</span>
+                {selectedBlogPost.publishedAt && <span>{selectedBlogPost.publishedAt}</span>}
+              </div>
+              <div className="blogDetailContent">{selectedBlogPost.content}</div>
+            </>
+          ) : (
+            <>
+              <p className="eyebrow">Blog</p>
+              <h1>Yazı bulunamadı</h1>
+              <p>Aradığınız blog yazısı yayında olmayabilir veya kaldırılmış olabilir.</p>
+            </>
+          )}
+        </article>
+      </main>
+    );
+  }
+
   return (
     <main className="page">
       <LayoutGroup id="quote-modal">
@@ -3225,7 +5112,10 @@ function App() {
                     ease: 'easeOut',
                   }}
                   onAnimationComplete={() => setHasQuoteButtonEntered(true)}
-                  onClick={() => setIsQuoteModalOpen(true)}
+                  onClick={() => {
+                    setSelectedQuoteCategoryKey('');
+                    setIsQuoteModalOpen(true);
+                  }}
                 >
                   Teklif Al
                 </motion.button>
@@ -3269,6 +5159,7 @@ function App() {
               className="iconButton"
               type="button"
               aria-label="Menüyü aç"
+              onClick={() => setIsHeaderMenuOpen((isOpen) => !isOpen)}
               initial={headerItemAnimation.initial}
               animate={headerItemAnimation.animate}
               transition={{ duration: 0.45, delay: 1.21, ease: 'easeOut' }}
@@ -3276,6 +5167,24 @@ function App() {
               <Menu size={28} strokeWidth={2.2} />
             </motion.button>
           </nav>
+
+          <AnimatePresence>
+            {isHeaderMenuOpen && (
+              <motion.nav
+                className="headerMenuPanel"
+                aria-label="Ana menü"
+                initial={{ opacity: 0, y: -10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                transition={{ duration: 0.18 }}
+              >
+                <a href="/" onClick={() => setIsHeaderMenuOpen(false)}>Ana Sayfa</a>
+                <a href="#hizmetler" onClick={() => setIsHeaderMenuOpen(false)}>Hizmetler</a>
+                <a href="#blog" onClick={() => setIsHeaderMenuOpen(false)}>Blog</a>
+                <a href="#iletisim" onClick={() => setIsHeaderMenuOpen(false)}>İletişim</a>
+              </motion.nav>
+            )}
+          </AnimatePresence>
         </header>
 
         <AnimatePresence>
@@ -3312,29 +5221,39 @@ function App() {
 
               <div className="quoteModalContent">
                 <p className="quoteModalEyebrow">Hızlı Teklif</p>
-                <h2 id="quote-modal-title">Projeniz için teklif alalım</h2>
-                <p>
-                  Otomatik kapı, bariyer veya geçiş sistemi ihtiyacınız için bize
-                  ulaşın. Keşif ve ürün önerisi için hızlıca dönüş yapalım.
-                </p>
+                <h2 id="quote-modal-title">Teklifiniz için lütfen seçim yapın</h2>
+                <p>İlgilendiğiniz ürün için yana kaydırın.</p>
 
-                <div className="productCarousel" aria-label="Ürün seçenekleri">
+                <div className="productCarousel" aria-label="Teklif kategori ve ürün seçenekleri">
                   <div className="productCarouselHeader">
                     <div>
-                      <p className="productCarouselEyebrow">Ürün Seçimi</p>
-                      <h3>İlgilendiğiniz ürünü seçin</h3>
+                      <p className="productCarouselEyebrow">{selectedQuoteCategory ? 'Ürün Seçimi' : 'Kategori Seçimi'}</p>
+                      <h3>{selectedQuoteCategory ? `${selectedQuoteCategory.title} ürünleri` : 'Önce kategori seçin'}</h3>
                     </div>
                     <div className="productCarouselControls">
+                      {selectedQuoteCategory && (
+                        <button
+                          className="quoteCategoryBackButton"
+                          type="button"
+                          onClick={() => {
+                            setSelectedQuoteCategoryKey('');
+                            setSelectedQuoteProductKey('');
+                            setQuoteAnswers({});
+                          }}
+                        >
+                          Kategori değiştir
+                        </button>
+                      )}
                       <button
                         type="button"
-                        aria-label="Önceki ürün"
+                        aria-label="Önceki seçenek"
                         onClick={() => scrollProducts('previous')}
                       >
                         <ChevronLeft size={20} strokeWidth={2.4} />
                       </button>
                       <button
                         type="button"
-                        aria-label="Sonraki ürün"
+                        aria-label="Sonraki seçenek"
                         onClick={() => scrollProducts('next')}
                       >
                         <ChevronRight size={20} strokeWidth={2.4} />
@@ -3343,33 +5262,163 @@ function App() {
                   </div>
 
                   <div className="productCarouselViewport" ref={productCarouselRef}>
-                    <div className="productCarouselTrack">
-                      {adminProducts.map((product) => (
-                        <article className="productSlide" key={product.key}>
-                          <div className="productImageWrap">
-                            <img src={product.imageHorizontal || product.image} alt={product.alt} />
-                          </div>
+                    <div className={`productCarouselTrack${selectedQuoteProductKey ? ' compact' : ''}`}>
+                      {!selectedQuoteCategory
+                        ? quoteCategories.map((category) => (
+                            <button
+                              className="quoteCategoryCard"
+                              key={category.key}
+                              type="button"
+                              onClick={() => {
+                                setSelectedQuoteCategoryKey(category.key);
+                                setSelectedQuoteProductKey('');
+                                setQuoteAnswers({});
+                                productCarouselRef.current?.scrollTo({ left: 0, behavior: 'smooth' });
+                              }}
+                            >
+                              <span className="quoteCategoryThumb">
+                                {category.image ? <img src={category.image} alt={category.title} /> : <Package size={28} strokeWidth={2.2} />}
+                              </span>
+                              <span>
+                                <strong>{category.title}</strong>
+                                <small>{category.productCount} ürün</small>
+                              </span>
+                            </button>
+                          ))
+                        : quoteProducts.map((product) => (
+                            <button
+                              className={`productSlide quoteProductSlide${selectedQuoteProductKey === product.key ? ' selected' : ''}`}
+                              key={product.key}
+                              type="button"
+                              onClick={() => {
+                                setSelectedQuoteProductKey(product.key);
+                                setQuoteAnswers(createDefaultQuoteAnswers(selectedQuoteCategoryKey, product.key));
+                              }}
+                            >
+                              <div className="productImageWrap">
+                                <img src={product.imageHorizontal || product.image} alt={product.alt} />
+                              </div>
 
-                          <div className="productSlideBody">
-                            <h4>{product.title}</h4>
-                            <div className="productBadges">
-                              <span>{product.categoryTitle}</span>
-                              {product.badges.slice(0, 2).map((badge) => (
-                                <span key={badge}>{badge}</span>
-                              ))}
-                            </div>
-                          </div>
-                        </article>
-                      ))}
+                              <div className="productSlideBody">
+                                <h4>{product.title}</h4>
+                                <div className="productBadges">
+                                  <span>{product.categoryTitle}</span>
+                                  {product.badges.slice(0, 2).map((badge) => (
+                                    <span key={badge}>{badge}</span>
+                                  ))}
+                                </div>
+                                {selectedQuoteProductKey === product.key && <strong className="quoteProductSelectedBadge">Seçildi</strong>}
+                              </div>
+                            </button>
+                          ))}
                     </div>
                   </div>
                 </div>
 
+                {selectedQuoteCategory && selectedQuoteProduct && (
+                  <div className="quoteQuestionStep">
+                    <div className="quoteQuestionStepHeader">
+                      <p>2. Adım</p>
+                      <h3>{selectedQuoteProduct.title} için birkaç bilgi</h3>
+                    </div>
+
+                    {activeQuoteQuestions.length > 0 ? (
+                      <div className="quoteQuestionList">
+                        {activeQuoteQuestions.map((question) => (
+                          <label className="quoteQuestionField" key={question.id}>
+                            <span>
+                              {question.question}
+                              {question.isRequired && <em> *</em>}
+                            </span>
+                            {question.description && <small>{question.description}</small>}
+                            {question.answerType === 'text' ? (
+                              <input
+                                required={question.isRequired}
+                                maxLength={question.maxLength || undefined}
+                                value={(quoteAnswers[question.id] as string | undefined) ?? ''}
+                                onChange={(event) => updateQuoteAnswer(question, event.target.value)}
+                                placeholder="Yanıtınızı yazın"
+                              />
+                            ) : question.answerType === 'number' ? (
+                              <input
+                                required={question.isRequired}
+                                step={question.decimalPlaces > 0 ? 1 / 10 ** question.decimalPlaces : 1}
+                                type="number"
+                                value={(quoteAnswers[question.id] as string | undefined) ?? ''}
+                                onChange={(event) => updateQuoteAnswer(question, event.target.value)}
+                                onBlur={(event) => {
+                                  if (!event.target.value) {
+                                    return;
+                                  }
+
+                                  const numberValue = Number(event.target.value);
+
+                                  if (Number.isFinite(numberValue)) {
+                                    updateQuoteAnswer(question, numberValue.toFixed(question.decimalPlaces));
+                                  }
+                                }}
+                                placeholder="Sayı girin"
+                              />
+                            ) : (
+                              <div className="quoteQuestionOptions">
+                                {question.options.map((option) => {
+                                  const currentAnswer = quoteAnswers[question.id];
+                                  const isChecked = Array.isArray(currentAnswer)
+                                    ? currentAnswer.includes(option)
+                                    : currentAnswer === option;
+
+                                  return (
+                                    <label key={option}>
+                                      <input
+                                        type={question.answerType === 'multiple' ? 'checkbox' : 'radio'}
+                                        name={question.id}
+                                        required={question.isRequired && question.answerType === 'single'}
+                                        checked={isChecked}
+                                        onChange={() => updateQuoteAnswer(question, option)}
+                                      />
+                                      <span>{option}</span>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="quoteQuestionEmpty">Bu kategori için panelden soru tanımlanmamış.</p>
+                    )}
+                  </div>
+                )}
+
                 <div className="quoteModalActions">
-                  <a href={phonePrimaryHref}>Telefonla Ara</a>
-                  <a href={whatsappHref} target="_blank" rel="noopener noreferrer">
-                    WhatsApp Yaz
-                  </a>
+                  {selectedQuoteCategory && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedQuoteCategoryKey('');
+                        setSelectedQuoteProductKey('');
+                        setQuoteAnswers({});
+                      }}
+                    >
+                      Geri
+                    </button>
+                  )}
+                  {!selectedQuoteCategory || selectedQuoteProduct ? (
+                    isQuoteContinueDisabled ? (
+                      <button type="button" disabled>
+                        Devam Et
+                      </button>
+                    ) : (
+                      <a href={quoteContinueHref} target="_blank" rel="noopener noreferrer">
+                        Devam Et
+                      </a>
+                    )
+                  ) : (
+                    <button type="button" disabled>
+                      Devam Et
+                    </button>
+                  )}
                 </div>
               </div>
             </motion.section>
@@ -3733,6 +5782,28 @@ function App() {
         </div>
       </section>
 
+      {latestBlogPosts.length > 0 && (
+        <section className="latestBlogSection" id="blog">
+          <div className="latestBlogHeader">
+            <p className="eyebrow">Blog</p>
+            <h2>Son Blog Yazıları</h2>
+            <p>Otomatik kapı, bariyer ve geçiş sistemleri hakkında güncel içerikler.</p>
+          </div>
+          <div className="latestBlogGrid">
+            {latestBlogPosts.map((post) => (
+              <a className="latestBlogCard" href={`/blog/${post.slug}`} key={post.key}>
+                {post.image && <img src={post.image} alt={post.imageAlt || post.title} />}
+                <div>
+                  <span>{post.categories[0]?.title ?? 'Blog'} / SEO %{post.seoScore}</span>
+                  <h3>{post.title}</h3>
+                  <p>{post.summary}</p>
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
       <footer className="siteFooter">
         <div className="footerBrand">
           <a className="footerLogo" href="/" aria-label="HHS Otomatik Kapı ana sayfa">
@@ -3849,7 +5920,9 @@ function App() {
 
         <div className="footerBottom">
           <span>© 2026 HHS Otomatik Kapı. Tüm hakları saklıdır.</span>
-          <a href="/panel">Yönetim Paneli</a>
+          <a href="/panel" target="_blank" rel="noreferrer">
+            Yönetim Paneli
+          </a>
         </div>
       </footer>
     </main>

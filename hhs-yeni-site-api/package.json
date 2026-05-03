@@ -1,9 +1,9 @@
 {
-  "name": "hhs-yeni-site-api",
+  "name": "hhs-yeni-site-api-template",
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "deploy": "wrangler deploy",
+    "deploy": "echo \"Bu template klasörü deploy edilmemeli. API için üst klasörde npm run deploy:api kullanın.\" && exit 1",
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "test": "vitest",

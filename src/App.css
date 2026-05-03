@@ -118,26 +118,6 @@ body {
   line-height: 1;
 }
 
-.adminLoginSocials {
-  display: flex;
-  gap: 12px;
-  margin: 28px 0 24px;
-}
-
-.adminLoginSocials span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border: 1px solid rgba(37, 54, 105, 0.12);
-  border-radius: 999px;
-  background: #ffffff;
-  color: var(--color-navy);
-  font-size: 14px;
-  font-weight: 900;
-}
-
 .adminLoginForm {
   width: min(360px, 100%);
   display: grid;
@@ -263,9 +243,10 @@ body {
 .adminShell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 260px 1fr;
   background: #f6f7fb;
   color: var(--color-navy);
+  font-size: 14px;
 }
 
 .adminSidebar {
@@ -274,9 +255,17 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 22px;
+  padding: 18px;
   background: #ffffff;
   border-right: 1px solid rgba(114, 114, 114, 0.14);
+}
+
+.adminBrandRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 26px;
 }
 
 .adminLogo {
@@ -285,7 +274,6 @@ body {
   justify-content: center;
   width: 92px;
   height: 52px;
-  margin-bottom: 34px;
   border-radius: 6px;
   background: rgba(37, 54, 105, 0.06);
   overflow: hidden;
@@ -295,6 +283,19 @@ body {
   width: 72px;
   height: 72px;
   object-fit: contain;
+}
+
+.adminSiteLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(37, 54, 105, 0.14);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--color-navy);
+  text-decoration: none;
 }
 
 .adminNav {
@@ -307,9 +308,9 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 46px;
-  padding: 0 14px;
-  border-radius: 14px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 12px;
   color: var(--color-dark-gray);
   font-weight: 800;
   text-decoration: none;
@@ -329,7 +330,7 @@ body {
 
 .adminSidebarFooter {
   display: grid;
-  gap: 14px;
+  gap: 10px;
   margin-top: auto;
 }
 
@@ -345,9 +346,9 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px;
+  padding: 12px;
   border: 1px solid rgba(114, 114, 114, 0.14);
-  border-radius: 18px;
+  border-radius: 16px;
 }
 
 .adminUserAvatar {
@@ -384,7 +385,7 @@ body {
 }
 
 .adminMain {
-  padding: 34px;
+  padding: 26px;
 }
 
 .adminTopbar {
@@ -392,7 +393,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  margin-bottom: 26px;
+  margin-bottom: 22px;
 }
 
 .adminTopbarActions {
@@ -411,13 +412,13 @@ body {
 .adminTopbar h1 {
   margin: 8px 0 0;
   color: var(--color-navy);
-  font-size: 42px;
+  font-size: 34px;
   line-height: 1;
 }
 
 .adminTopbar button {
-  min-height: 44px;
-  padding: 0 18px;
+  min-height: 38px;
+  padding: 0 15px;
   border: 0;
   border-radius: 999px;
   background: var(--color-orange);
@@ -442,8 +443,8 @@ body {
 .adminStats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 24px;
+  gap: 12px;
+  margin-bottom: 20px;
 }
 
 .adminToast {
@@ -492,7 +493,7 @@ body {
 }
 
 .adminStats article {
-  padding: 20px;
+  padding: 16px;
 }
 
 .adminStats span {
@@ -504,15 +505,15 @@ body {
 
 .adminStats strong {
   display: block;
-  margin-top: 8px;
+  margin-top: 6px;
   color: var(--color-navy);
-  font-size: 30px;
+  font-size: 24px;
 }
 
 .adminProducts {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
 }
 
 .adminProductCard {
@@ -537,13 +538,13 @@ body {
 .adminProductCard img {
   display: block;
   width: 100%;
-  height: 150px;
+  height: 130px;
   object-fit: cover;
   background: var(--color-light-gray);
 }
 
 .adminProductCard div {
-  padding: 16px;
+  padding: 14px;
 }
 
 .adminProductCard span {
@@ -557,31 +558,124 @@ body {
 }
 
 .adminProductCard h2 {
-  margin: 12px 0 8px;
+  margin: 10px 0 6px;
   color: var(--color-navy);
-  font-size: 20px;
+  font-size: 17px;
   line-height: 1.15;
 }
 
 .adminProductCard p {
   color: var(--color-dark-gray);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  line-clamp: 3;
+  -webkit-line-clamp: 3;
+}
+
+.adminBlogImageFallback {
+  height: 150px;
+  background:
+    radial-gradient(circle at 22% 20%, rgba(240, 128, 26, 0.2), transparent 28%),
+    linear-gradient(135deg, rgba(37, 54, 105, 0.12), rgba(216, 216, 216, 0.42));
+}
+
+.adminBlogModal {
+  width: min(980px, 100%);
+}
+
+.adminBlogForm .adminLargeTextarea {
+  min-height: 220px;
+}
+
+.adminSeoPanel {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid rgba(114, 114, 114, 0.14);
+  border-radius: 18px;
+  background: #f8f9fc;
+}
+
+.adminSeoScore {
+  display: inline-flex;
+  width: max-content;
+  padding: 7px 12px;
+  border-radius: 999px;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.adminSeoScore.good {
+  background: #15803d;
+}
+
+.adminSeoScore.medium {
+  background: #b7791f;
+}
+
+.adminSeoScore.bad {
+  background: #b42318;
+}
+
+.adminSeoFooterScore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  margin-right: auto;
+  padding: 0 13px;
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.adminFormActions .dangerButton + .adminSeoFooterScore {
+  margin-right: 0;
+}
+
+.adminSeoFooterScore.good {
+  background: #15803d;
+}
+
+.adminSeoFooterScore.medium {
+  background: #b7791f;
+}
+
+.adminSeoFooterScore.bad {
+  background: #b42318;
+}
+
+.adminSeoPanel span {
+  color: var(--color-dark-gray);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.adminSeoPanel span.passed {
+  color: #15803d;
+}
+
+.adminSeoPanel span.failed {
+  color: #b42318;
 }
 
 .adminUsers {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
 }
 
 .adminUserCard {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 16px;
-  padding: 18px;
+  gap: 14px;
+  padding: 16px;
   border: 1px solid rgba(114, 114, 114, 0.12);
-  border-radius: 22px;
+  border-radius: 20px;
   background: #ffffff;
   color: inherit;
   cursor: pointer;
@@ -605,9 +699,9 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 50px;
-  height: 50px;
-  border-radius: 18px;
+  width: 44px;
+  height: 44px;
+  border-radius: 16px;
   background: rgba(37, 54, 105, 0.08);
   color: var(--color-navy);
   overflow: hidden;
@@ -621,7 +715,7 @@ body {
 
 .adminUserCardBody {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .adminUserCardBody span {
@@ -644,16 +738,16 @@ body {
 }
 
 .adminUserCardBody h2 {
-  margin: 12px 0 6px;
+  margin: 10px 0 5px;
   color: var(--color-navy);
-  font-size: 21px;
+  font-size: 18px;
   line-height: 1.15;
 }
 
 .adminUserCardBody p {
   margin: 0;
   color: var(--color-dark-gray);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   word-break: break-word;
 }
@@ -706,7 +800,7 @@ body {
 .adminDatabaseList {
   overflow: hidden;
   border: 1px solid rgba(114, 114, 114, 0.12);
-  border-radius: 22px;
+  border-radius: 20px;
   background: #ffffff;
 }
 
@@ -719,7 +813,7 @@ body {
 }
 
 .adminDatabaseListHead {
-  padding: 14px 18px;
+  padding: 12px 16px;
   border-bottom: 1px solid rgba(114, 114, 114, 0.12);
   background: #f6f7fb;
   color: var(--color-dark-gray);
@@ -730,7 +824,7 @@ body {
 }
 
 .adminDatabaseRow {
-  padding: 16px 18px;
+  padding: 14px 16px;
   border-bottom: 1px solid rgba(114, 114, 114, 0.1);
 }
 
@@ -976,7 +1070,7 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  padding: 28px 28px 18px;
+  padding: 24px 24px 16px;
   border-bottom: 1px solid rgba(114, 114, 114, 0.12);
   background: #ffffff;
 }
@@ -992,7 +1086,7 @@ body {
 .adminModalHeader h2 {
   margin: 6px 0 0;
   color: var(--color-navy);
-  font-size: 30px;
+  font-size: 24px;
 }
 
 .adminModalHeader button {
@@ -1015,8 +1109,8 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: start;
-  gap: 16px;
-  padding: 24px 28px 28px;
+  gap: 14px;
+  padding: 22px 24px 24px;
 }
 
 .adminCategoryManager {
@@ -1110,11 +1204,243 @@ body {
   padding-top: 24px;
 }
 
-.adminProductForm label {
+.adminToggleRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 13px;
+  border: 1px solid rgba(114, 114, 114, 0.14);
+  border-radius: 16px;
+  background: #f8f9fc;
+}
+
+.adminToggleRow span {
+  display: grid;
+  gap: 4px;
+}
+
+.adminToggleRow input {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+}
+
+.adminFormHint {
+  margin: 0;
+  color: var(--color-dark-gray);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.adminWpTestResult {
   display: grid;
   gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(114, 114, 114, 0.14);
+  border-radius: 16px;
+  background: #f8f9fc;
+  color: var(--color-dark-gray);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.adminWpTestResult strong.success {
+  color: #15803d;
+}
+
+.adminWpTestResult strong.error {
+  color: #b42318;
+}
+
+.adminWpTestResult small {
+  color: var(--color-dark-gray);
+  line-height: 1.5;
+}
+
+.adminQuoteQuestionPanel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.adminQuoteQuestionToolbar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.adminQuoteQuestionToolbar label {
+  display: grid;
+  gap: 7px;
+  color: var(--color-navy);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.adminQuoteQuestionToolbar select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid rgba(114, 114, 114, 0.14);
+  border-radius: 14px;
+  background: #f8f9fc;
+  color: var(--color-navy);
+  font: inherit;
+  font-weight: 800;
+}
+
+.adminQuoteQuestionToolbar button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-orange);
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+}
+
+.adminQuoteQuestionList {
+  display: grid;
+  gap: 12px;
+}
+
+.adminQuoteQuestionListCard,
+.adminQuoteQuestionEmpty {
+  border: 1px solid rgba(114, 114, 114, 0.12);
+  border-radius: 18px;
+  background: #ffffff;
+}
+
+.adminQuoteQuestionListCard {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.adminQuoteQuestionListCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.adminQuoteQuestionListCardHeader div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.adminQuoteQuestionListCardHeader span,
+.adminStatusPill {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  min-height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: rgba(37, 54, 105, 0.08);
+  color: var(--color-navy);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.adminStatusPill {
+  flex: 0 0 auto;
+  background: rgba(180, 35, 24, 0.08);
+  color: #b42318;
+}
+
+.adminStatusPill.active {
+  background: rgba(21, 128, 61, 0.1);
+  color: #15803d;
+}
+
+.adminQuoteQuestionListCard h3 {
+  margin: 0;
+  color: var(--color-navy);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.adminQuoteQuestionListCard p {
+  margin: -4px 0 0;
+  color: var(--color-dark-gray);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.adminQuoteQuestionMeta {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  margin: 0;
+}
+
+.adminQuoteQuestionMeta div {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 14px;
+  background: #f8f9fc;
+}
+
+.adminQuoteQuestionMeta dt {
+  color: var(--color-dark-gray);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.adminQuoteQuestionMeta dd {
+  overflow: hidden;
+  margin: 4px 0 0;
   color: var(--color-navy);
   font-size: 13px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminQuoteQuestionListCard > button {
+  justify-self: end;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(37, 54, 105, 0.16);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--color-navy);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.adminQuoteQuestionEmpty {
+  display: grid;
+  gap: 6px;
+  padding: 28px;
+  color: var(--color-dark-gray);
+  text-align: center;
+}
+
+.adminQuoteQuestionEmpty strong {
+  color: var(--color-navy);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.adminQuoteQuestionEmpty span {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.adminProductForm label {
+  display: grid;
+  gap: 7px;
+  color: var(--color-navy);
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -1127,7 +1453,7 @@ body {
   background: #ffffff;
   color: var(--color-navy);
   font: inherit;
-  padding: 12px 13px;
+  padding: 10px 12px;
   outline: 0;
 }
 
@@ -1257,7 +1583,19 @@ body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 24px 28px;
+  padding: 22px 24px;
+}
+
+.adminAssetManagerPanel,
+.adminPanelForm {
+  overflow: hidden;
+  border: 1px solid rgba(114, 114, 114, 0.12);
+  border-radius: 20px;
+  background: #ffffff;
+}
+
+.adminPanelForm {
+  align-content: start;
 }
 
 .adminImageCropBody {
@@ -1402,15 +1740,76 @@ body {
 
 .adminAssetGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.adminAssetFolders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 14px 0;
+}
+
+.adminAssetFolders button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(37, 54, 105, 0.12);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--color-navy);
+  cursor: pointer;
+  font: inherit;
+}
+
+.adminAssetFolders button.active {
+  border-color: rgba(240, 128, 26, 0.36);
+  background: rgba(240, 128, 26, 0.1);
+  color: var(--color-orange);
+}
+
+.adminAssetFolders strong,
+.adminAssetFolders span {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.adminAssetFolders span {
+  color: inherit;
+  opacity: 0.72;
 }
 
 .adminAssetCard {
   display: grid;
   gap: 8px;
   padding: 12px;
-  border-radius: 18px;
+  border: 1px solid rgba(114, 114, 114, 0.12);
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.adminAssetSelect {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-navy);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.adminAssetSelect input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-orange);
+}
+
+.adminAssetSelect input:disabled + span {
+  color: var(--color-dark-gray);
+  opacity: 0.7;
 }
 
 .adminAssetPreview {
@@ -1813,6 +2212,15 @@ body {
   cursor: pointer;
 }
 
+.productCarouselControls .quoteCategoryBackButton {
+  width: auto;
+  padding: 0 12px;
+  color: var(--color-navy);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .productCarouselViewport {
   overflow-x: auto;
   overscroll-behavior-x: contain;
@@ -1837,6 +2245,66 @@ body {
   padding: 0 18px 18px;
 }
 
+.quoteCategoryCard {
+  flex: 0 0 clamp(210px, 30%, 260px);
+  min-width: clamp(210px, 30%, 260px);
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 100px;
+  padding: 12px;
+  border: 1px solid rgba(37, 54, 105, 0.12);
+  border-radius: 20px;
+  background: #ffffff;
+  color: var(--color-navy);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  scroll-snap-align: start;
+  box-shadow: 0 14px 30px rgba(37, 54, 105, 0.06);
+}
+
+.quoteCategoryCard:hover {
+  border-color: rgba(240, 128, 26, 0.45);
+  transform: translateY(-1px);
+}
+
+.quoteCategoryThumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 74px;
+  height: 74px;
+  overflow: hidden;
+  border-radius: 18px;
+  background: rgba(37, 54, 105, 0.07);
+  color: var(--color-navy);
+}
+
+.quoteCategoryThumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.quoteCategoryCard strong,
+.quoteCategoryCard small {
+  display: block;
+}
+
+.quoteCategoryCard strong {
+  margin-bottom: 6px;
+  font-size: 16px;
+  line-height: 1.15;
+}
+
+.quoteCategoryCard small {
+  color: var(--color-dark-gray);
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .productSlide {
   flex: 0 0 clamp(210px, 30%, 280px);
   min-width: clamp(210px, 30%, 280px);
@@ -1846,6 +2314,55 @@ body {
   border: 1px solid rgba(114, 114, 114, 0.12);
   border-radius: 18px;
   background: #ffffff;
+}
+
+.quoteProductSlide {
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.quoteProductSlide:hover,
+.quoteProductSlide.selected {
+  border-color: rgba(240, 128, 26, 0.62);
+  box-shadow: 0 16px 34px rgba(240, 128, 26, 0.16);
+  transform: translateY(-1px);
+}
+
+.productCarouselTrack.compact {
+  align-items: center;
+}
+
+.productCarouselTrack.compact .quoteProductSlide:not(.selected) {
+  display: none;
+}
+
+.productCarouselTrack.compact .quoteProductSlide {
+  flex: 0 0 76px;
+  min-width: 76px;
+  width: 76px;
+  height: 76px;
+  padding: 4px;
+  border-radius: 999px;
+}
+
+.productCarouselTrack.compact .quoteProductSlide.selected {
+  border-color: var(--color-orange);
+  box-shadow: 0 10px 22px rgba(240, 128, 26, 0.24);
+}
+
+.productCarouselTrack.compact .productImageWrap {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.productCarouselTrack.compact .productSlideBody {
+  display: none;
 }
 
 .productImageWrap {
@@ -1890,30 +2407,145 @@ body {
   line-height: 1.1;
 }
 
+.quoteProductSelectedBadge {
+  display: inline-flex;
+  margin-top: 10px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(240, 128, 26, 0.12);
+  color: var(--color-orange);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.quoteQuestionStep {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid rgba(37, 54, 105, 0.12);
+  border-radius: 20px;
+  background: #ffffff;
+}
+
+.quoteQuestionStepHeader p {
+  margin: 0;
+  color: var(--color-orange);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.quoteQuestionStepHeader h3 {
+  margin: 4px 0 14px;
+  color: var(--color-navy);
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+.quoteQuestionList {
+  display: grid;
+  gap: 12px;
+}
+
+.quoteQuestionField {
+  display: grid;
+  gap: 8px;
+  color: var(--color-navy);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.quoteQuestionField small {
+  color: var(--color-dark-gray);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.quoteQuestionField em {
+  color: #b42318;
+  font-style: normal;
+}
+
+.quoteQuestionField input[type='text'],
+.quoteQuestionField input[type='number'],
+.quoteQuestionField > input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(114, 114, 114, 0.18);
+  border-radius: 14px;
+  color: var(--color-navy);
+  font: inherit;
+  font-weight: 800;
+  padding: 0 12px;
+  outline: 0;
+}
+
+.quoteQuestionOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quoteQuestionOptions label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid rgba(37, 54, 105, 0.12);
+  border-radius: 999px;
+  background: #f8f9fc;
+  color: var(--color-navy);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.quoteQuestionOptions input {
+  margin: 0;
+}
+
+.quoteQuestionEmpty {
+  margin: 0;
+  color: var(--color-dark-gray);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .quoteModalActions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 12px;
   margin-top: 20px;
 }
 
-.quoteModalActions a {
+.quoteModalActions a,
+.quoteModalActions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 46px;
+  border: 0;
   padding: 0 18px;
   border-radius: 999px;
   color: #ffffff;
+  cursor: pointer;
+  font: inherit;
   font-weight: 800;
   text-decoration: none;
   background: rgba(240, 128, 26, 0.95);
 }
 
-.quoteModalActions a:last-child {
+.quoteModalActions button {
+  border: 1px solid rgba(37, 54, 105, 0.18);
   background: #ffffff;
-  border: 1px solid rgba(37, 54, 105, 0.22);
   color: var(--color-navy);
+}
+
+.quoteModalActions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .quoteModalClose {
@@ -1992,6 +2624,33 @@ body {
   background: rgba(240, 128, 26, 0.18);
   border-color: rgba(240, 128, 26, 0.52);
   transform: translateY(-1px);
+}
+
+.headerMenuPanel {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 8%;
+  display: grid;
+  gap: 8px;
+  min-width: 210px;
+  padding: 12px;
+  border: 1px solid rgba(216, 216, 216, 0.2);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+}
+
+.headerMenuPanel a {
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--color-navy);
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.headerMenuPanel a:hover {
+  background: rgba(240, 128, 26, 0.1);
+  color: var(--color-orange);
 }
 
 @keyframes rainbowBackground {
@@ -2371,9 +3030,19 @@ article p {
   z-index: 1;
   padding: 70px 8%;
   overflow: hidden;
-  background:
+  background-image:
     linear-gradient(90deg, rgba(255, 255, 255, 0.94) 0%, rgba(255, 255, 255, 0.86) 45%, rgba(255, 255, 255, 0.22) 100%),
-    url('/service-record-bg.png') center right / cover no-repeat;
+    url('/service-record-bg.png');
+  background-position:
+    center,
+    center right;
+  background-size:
+    auto,
+    cover;
+  background-repeat: no-repeat;
+  background-attachment:
+    scroll,
+    fixed;
   color: var(--color-navy);
 }
 
@@ -2412,6 +3081,134 @@ article p {
 
 .serviceRequestOpenButton:hover {
   transform: translateY(-2px);
+}
+
+.latestBlogSection {
+  padding: 70px 8%;
+  background: #ffffff;
+  color: var(--color-navy);
+}
+
+.latestBlogHeader {
+  max-width: 720px;
+  margin-bottom: 28px;
+}
+
+.latestBlogHeader h2 {
+  margin: 8px 0 10px;
+  font-size: clamp(30px, 4vw, 44px);
+}
+
+.latestBlogHeader p:not(.eyebrow) {
+  color: var(--color-dark-gray);
+  font-weight: 700;
+}
+
+.latestBlogGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.latestBlogCard {
+  overflow: hidden;
+  border: 1px solid rgba(114, 114, 114, 0.12);
+  border-radius: 24px;
+  background: #ffffff;
+  color: inherit;
+  text-decoration: none;
+  box-shadow: 0 18px 44px rgba(37, 54, 105, 0.08);
+}
+
+.latestBlogCard img {
+  width: 100%;
+  height: 190px;
+  object-fit: cover;
+  background: var(--color-light-gray);
+}
+
+.latestBlogCard div {
+  padding: 18px;
+}
+
+.latestBlogCard span {
+  color: var(--color-orange);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.latestBlogCard h3 {
+  margin: 10px 0 8px;
+  font-size: 21px;
+}
+
+.latestBlogCard p {
+  color: var(--color-dark-gray);
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  line-clamp: 3;
+  -webkit-line-clamp: 3;
+}
+
+.blogDetailPage {
+  min-height: 100vh;
+  padding: 110px 8% 70px;
+  background: #f6f7fb;
+}
+
+.blogDetail {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 28px;
+  border-radius: 28px;
+  background: #ffffff;
+  color: var(--color-navy);
+}
+
+.blogDetail > img {
+  width: 100%;
+  max-height: 420px;
+  object-fit: cover;
+  border-radius: 22px;
+  margin-bottom: 24px;
+}
+
+.blogBackLink {
+  display: inline-flex;
+  margin-bottom: 18px;
+  color: var(--color-orange);
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.blogDetail h1 {
+  margin: 8px 0 14px;
+  font-size: clamp(34px, 5vw, 56px);
+}
+
+.blogDetailSummary,
+.blogDetailContent {
+  color: var(--color-dark-gray);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.75;
+}
+
+.blogDetailMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0;
+}
+
+.blogDetailMeta span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(240, 128, 26, 0.1);
+  color: var(--color-orange);
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .serviceRequestModal {
@@ -2806,7 +3603,7 @@ article p {
     border-bottom: 1px solid rgba(114, 114, 114, 0.14);
   }
 
-  .adminLogo {
+  .adminBrandRow {
     margin-bottom: 18px;
   }
 
@@ -2929,6 +3726,11 @@ article p {
     padding: 18px;
   }
 
+  .adminQuoteQuestionToolbar,
+  .adminQuoteQuestionMeta {
+    grid-template-columns: 1fr;
+  }
+
   .adminCategoryList {
     max-height: 220px;
     overflow-y: auto;
@@ -2990,6 +3792,42 @@ article p {
     align-items: flex-start;
     flex-direction: column;
     padding: 16px 14px 10px;
+  }
+
+  .productCarouselControls {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .productCarouselControls .quoteCategoryBackButton {
+    margin-right: auto;
+  }
+
+  .quoteCategoryCard {
+    flex-basis: calc(100vw - 58px);
+    min-width: calc(100vw - 58px);
+    min-height: 112px;
+    grid-template-columns: 88px minmax(0, 1fr);
+    padding: 12px;
+  }
+
+  .quoteCategoryThumb {
+    width: 88px;
+    height: 88px;
+  }
+
+  .quoteQuestionStep {
+    padding: 14px;
+  }
+
+  .quoteQuestionOptions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .quoteQuestionOptions label {
+    justify-content: flex-start;
+    border-radius: 14px;
   }
 
   .productSlide {

@@ -4,7 +4,7 @@
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "hhs-yeni-site-api",
+	"name": "hhs-yeni-site-api-template-disabled",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-05-01",
 	"observability": {

@@ -8,15 +8,19 @@
     "build": "tsc -b && vite build",
     "deploy:api": "wrangler deploy",
     "deploy:web": "npm run build && wrangler pages deploy dist --project-name=hhs-site",
+    "import:wp-blog": "node scripts/import-wordpress-blog.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@react-three/fiber": "^9.6.1",
+    "dotenv": "^17.4.2",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.14.0",
+    "mysql2": "^3.22.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "sharp": "^0.34.5",
     "three": "^0.184.0"
   },
   "devDependencies": {
