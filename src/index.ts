@@ -55,6 +55,7 @@ type QuoteQuestionInput = {
   productKey: string;
   question: string;
   description?: string;
+  imageUrl?: string;
   answerType: 'text' | 'single' | 'multiple' | 'number';
   options?: string[];
   defaultValue?: string;
@@ -103,6 +104,20 @@ type ServiceRequestInput = {
   description?: string;
 };
 
+type QuoteRequestInput = {
+  isAnonymous?: boolean;
+  pageKey?: string;
+  categoryKey: string;
+  categoryTitle?: string;
+  productKey: string;
+  productTitle?: string;
+  fullName?: string;
+  phone?: string;
+  email?: string;
+  answers?: { questionId?: string; question: string; answer: string | string[] }[];
+  whatsappMessage: string;
+};
+
 type BlogPostInput = {
   key: string;
   title: string;
@@ -135,6 +150,29 @@ type ServiceRequestRecord = ServiceRequestInput & {
   id: string;
   productTitle: string;
   emailSent: boolean;
+};
+
+type QuoteRequestRecord = QuoteRequestInput & {
+  id: string;
+  whatsappUrl: string;
+};
+
+type QuoteRequestRow = {
+  id: string;
+  is_anonymous: number;
+  page_key: string;
+  category_key: string;
+  category_title: string;
+  product_key: string;
+  product_title: string;
+  full_name: string;
+  phone: string;
+  email: string;
+  answers_json: string;
+  whatsapp_message: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
 };
 
 type ProductRow = {
@@ -203,6 +241,7 @@ type QuoteQuestionRow = {
   product_key: string | null;
   question: string;
   description: string;
+  image_url: string;
   answer_type: string;
   options_json: string;
   default_value: string;
@@ -427,6 +466,14 @@ const getServiceRequestBody = async (request: Request) => {
   }
 };
 
+const getQuoteRequestBody = async (request: Request) => {
+  try {
+    return (await request.json()) as QuoteRequestInput;
+  } catch {
+    return null;
+  }
+};
+
 const getBlogPostRequestBody = async (request: Request) => {
   try {
     return (await request.json()) as BlogPostInput;
@@ -532,6 +579,23 @@ const isValidServiceRequestInput = (body: ServiceRequestInput | null): body is S
   );
 };
 
+const isValidQuoteRequestInput = (body: QuoteRequestInput | null): body is QuoteRequestInput => {
+  if (!body?.categoryKey?.trim() || !body.productKey?.trim() || !body.whatsappMessage?.trim()) {
+    return false;
+  }
+
+  if (body.isAnonymous) {
+    return true;
+  }
+
+  return Boolean(
+    body.fullName?.trim() &&
+      body.phone?.trim() &&
+      body.email?.trim() &&
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim()),
+  );
+};
+
 const isValidBlogPostInput = (body: BlogPostInput | null): body is BlogPostInput => {
   return Boolean(
     body?.key &&
@@ -602,6 +666,7 @@ const getUsedAssetKeys = async (db: D1Database) => {
       )
       .all<AssetUrlRow>(),
     db.prepare('SELECT image_url FROM blog_posts').all<AssetUrlRow>(),
+    db.prepare('SELECT image_url FROM quote_questions').all<AssetUrlRow>(),
     db.prepare('SELECT avatar_url FROM admin_users').all<AssetUrlRow>(),
   ];
   const results = await Promise.all(
@@ -653,6 +718,7 @@ const getAssetReferences = async (db: D1Database, objectKey: string) => {
       )
       .bind(likeValue, likeValue, likeValue, likeValue),
     db.prepare('SELECT title AS label FROM blog_posts WHERE image_url LIKE ?').bind(likeValue),
+    db.prepare('SELECT question AS label FROM quote_questions WHERE image_url LIKE ?').bind(likeValue),
     db.prepare('SELECT display_name AS label FROM admin_users WHERE avatar_url LIKE ?').bind(likeValue),
   ];
   const results = await Promise.all(
@@ -1204,6 +1270,7 @@ const mapQuoteQuestion = (question: QuoteQuestionRow) => {
       productKey: question.product_key ?? '',
       question: question.question,
       description: question.description ?? '',
+      imageUrl: question.image_url ?? '',
       answerType: question.answer_type,
       options,
       defaultValue: question.default_value ?? '',
@@ -1220,6 +1287,7 @@ const mapQuoteQuestion = (question: QuoteQuestionRow) => {
       productKey: question.product_key ?? '',
       question: question.question,
       description: question.description ?? '',
+      imageUrl: question.image_url ?? '',
       answerType: question.answer_type,
       options: [],
       defaultValue: question.default_value ?? '',
@@ -1232,7 +1300,12 @@ const mapQuoteQuestion = (question: QuoteQuestionRow) => {
   }
 };
 
-const listQuoteQuestions = async (db: D1Database, categoryKey?: string, productKey?: string, includeInactive = false) => {
+const listQuoteQuestions = async (
+  db: D1Database,
+  categoryKey?: string,
+  productKey?: string,
+  includeInactive = false,
+) => {
   const whereClauses = [];
   const bindValues: (string | number)[] = [];
 
@@ -1253,7 +1326,7 @@ const listQuoteQuestions = async (db: D1Database, categoryKey?: string, productK
   const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
   const questions = await db
     .prepare(
-      `SELECT id, category_key, product_key, question, description, answer_type, options_json, default_value, max_length, decimal_places, is_required, sort_order, is_active
+      `SELECT id, category_key, product_key, question, description, image_url, answer_type, options_json, default_value, max_length, decimal_places, is_required, sort_order, is_active
       FROM quote_questions
       ${whereSql}
       ORDER BY category_key ASC, product_key ASC, sort_order ASC, question ASC`,
@@ -1271,6 +1344,7 @@ const replaceQuoteQuestions = async (db: D1Database, input: QuoteQuestionListInp
     productKey: input.productKey,
     question: question.question.trim(),
     description: question.description?.trim() ?? '',
+    imageUrl: question.imageUrl?.trim() ?? '',
     answerType: question.answerType,
     options: (question.options ?? []).map((option) => option.trim()).filter(Boolean),
     defaultValue: question.defaultValue?.trim() ?? '',
@@ -1283,16 +1357,20 @@ const replaceQuoteQuestions = async (db: D1Database, input: QuoteQuestionListInp
   }));
 
   await db.batch([
-    db.prepare('DELETE FROM quote_questions WHERE category_key = ? AND product_key = ?').bind(input.categoryKey, input.productKey),
+    db
+      .prepare('DELETE FROM quote_questions WHERE category_key = ? AND product_key = ?')
+      .bind(input.categoryKey, input.productKey),
     ...activeQuestions.map((question) =>
       db
         .prepare(
           `INSERT INTO quote_questions (
             id,
+            page_key,
             category_key,
             product_key,
             question,
             description,
+            image_url,
             answer_type,
             options_json,
             default_value,
@@ -1301,14 +1379,16 @@ const replaceQuoteQuestions = async (db: D1Database, input: QuoteQuestionListInp
             is_required,
             sort_order,
             is_active
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           question.id,
+          'all',
           question.categoryKey,
           question.productKey,
           question.question,
           question.description,
+          question.imageUrl,
           question.answerType,
           JSON.stringify(question.options),
           question.defaultValue,
@@ -1783,6 +1863,157 @@ const createServiceRequest = async (db: D1Database, env: Env, input: ServiceRequ
   }
 
   return serviceRequest;
+};
+
+const ensureQuoteRequestsTable = async (db: D1Database) => {
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS quote_requests (
+        id TEXT PRIMARY KEY,
+        is_anonymous INTEGER NOT NULL DEFAULT 0,
+        page_key TEXT NOT NULL DEFAULT '',
+        category_key TEXT NOT NULL,
+        category_title TEXT NOT NULL DEFAULT '',
+        product_key TEXT NOT NULL,
+        product_title TEXT NOT NULL DEFAULT '',
+        full_name TEXT NOT NULL DEFAULT '',
+        phone TEXT NOT NULL DEFAULT '',
+        email TEXT NOT NULL DEFAULT '',
+        answers_json TEXT NOT NULL DEFAULT '[]',
+        whatsapp_message TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'new',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+    )
+    .run();
+
+  await db.prepare('CREATE INDEX IF NOT EXISTS idx_quote_requests_created_at ON quote_requests(created_at)').run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS idx_quote_requests_status ON quote_requests(status)').run();
+};
+
+const createQuoteRequest = async (db: D1Database, input: QuoteRequestInput) => {
+  await ensureQuoteRequestsTable(db);
+
+  const contactSettings = await getContactSettings(db);
+  const whatsappDigits = contactSettings.whatsapp.replace(/\D/g, '');
+  const quoteRequest: QuoteRequestRecord = {
+    id: crypto.randomUUID(),
+    isAnonymous: input.isAnonymous === true,
+    pageKey: input.pageKey?.trim() ?? '',
+    categoryKey: input.categoryKey.trim(),
+    categoryTitle: input.categoryTitle?.trim() ?? '',
+    productKey: input.productKey.trim(),
+    productTitle: input.productTitle?.trim() ?? '',
+    fullName: input.isAnonymous ? '' : (input.fullName?.trim() ?? ''),
+    phone: input.isAnonymous ? '' : (input.phone?.trim() ?? ''),
+    email: input.isAnonymous ? '' : (input.email?.trim() ?? ''),
+    answers: (input.answers ?? []).map((answer) => ({
+      questionId: answer.questionId?.trim() ?? '',
+      question: answer.question.trim(),
+      answer: Array.isArray(answer.answer)
+        ? answer.answer.map((value) => String(value).trim()).filter(Boolean)
+        : String(answer.answer ?? '').trim(),
+    })),
+    whatsappMessage: input.whatsappMessage.trim(),
+    whatsappUrl: whatsappDigits
+      ? `https://wa.me/${whatsappDigits}?text=${encodeURIComponent(input.whatsappMessage.trim())}`
+      : '',
+  };
+
+  await db
+    .prepare(
+      `INSERT INTO quote_requests (
+        id,
+        is_anonymous,
+        page_key,
+        category_key,
+        category_title,
+        product_key,
+        product_title,
+        full_name,
+        phone,
+        email,
+        answers_json,
+        whatsapp_message
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      quoteRequest.id,
+      quoteRequest.isAnonymous ? 1 : 0,
+      quoteRequest.pageKey,
+      quoteRequest.categoryKey,
+      quoteRequest.categoryTitle,
+      quoteRequest.productKey,
+      quoteRequest.productTitle,
+      quoteRequest.fullName,
+      quoteRequest.phone,
+      quoteRequest.email,
+      JSON.stringify(quoteRequest.answers ?? []),
+      quoteRequest.whatsappMessage,
+    )
+    .run();
+
+  return quoteRequest;
+};
+
+const mapQuoteRequest = (request: QuoteRequestRow) => {
+  let answers: QuoteRequestInput['answers'];
+
+  try {
+    const parsedAnswers = JSON.parse(request.answers_json) as unknown;
+    answers = Array.isArray(parsedAnswers)
+      ? parsedAnswers
+          .filter((answer): answer is { questionId?: string; question: string; answer: string | string[] } =>
+            Boolean(answer && typeof answer === 'object' && 'question' in answer),
+          )
+          .map((answer) => ({
+            questionId: typeof answer.questionId === 'string' ? answer.questionId : '',
+            question: typeof answer.question === 'string' ? answer.question : '',
+            answer: Array.isArray(answer.answer)
+              ? answer.answer.filter((value): value is string => typeof value === 'string')
+              : typeof answer.answer === 'string'
+                ? answer.answer
+                : '',
+          }))
+      : [];
+  } catch {
+    answers = [];
+  }
+
+  return {
+    id: request.id,
+    isAnonymous: Boolean(request.is_anonymous),
+    pageKey: request.page_key,
+    categoryKey: request.category_key,
+    categoryTitle: request.category_title,
+    productKey: request.product_key,
+    productTitle: request.product_title,
+    fullName: request.full_name,
+    phone: request.phone,
+    email: request.email,
+    answers,
+    whatsappMessage: request.whatsapp_message,
+    status: request.status,
+    createdAt: request.created_at,
+    updatedAt: request.updated_at,
+  };
+};
+
+const listQuoteRequests = async (db: D1Database) => {
+  await ensureQuoteRequestsTable(db);
+
+  const requests = await db
+    .prepare(
+      `SELECT id, is_anonymous, page_key, category_key, category_title, product_key, product_title, full_name, phone, email,
+        answers_json, whatsapp_message, status, created_at, updated_at
+      FROM quote_requests
+      ORDER BY created_at DESC
+      LIMIT 200`,
+    )
+    .all<QuoteRequestRow>();
+
+  return requests.results.map(mapQuoteRequest);
 };
 
 const getCategory = async (db: D1Database, key: string) => {
@@ -2838,6 +3069,46 @@ export default {
           ok: true,
           request: serviceRequest,
           emailSent: serviceRequest.emailSent,
+        },
+        { status: 201 },
+      );
+    }
+
+    if (url.pathname === '/api/quote-requests') {
+      if (request.method === 'GET') {
+        const admin = await authenticateAdmin(request, env.DB);
+
+        if (!admin) {
+          return unauthorized();
+        }
+
+        if (!hasAdminModule(admin, 'settings')) {
+          return forbidden();
+        }
+
+        return json({
+          ok: true,
+          requests: await listQuoteRequests(env.DB),
+        });
+      }
+
+      if (request.method !== 'POST') {
+        return notFound();
+      }
+
+      const body = await getQuoteRequestBody(request);
+
+      if (!isValidQuoteRequestInput(body)) {
+        return json({ ok: false, error: 'Invalid quote request payload' }, { status: 400 });
+      }
+
+      const quoteRequest = await createQuoteRequest(env.DB, body);
+
+      return json(
+        {
+          ok: true,
+          request: quoteRequest,
+          whatsappUrl: quoteRequest.whatsappUrl,
         },
         { status: 201 },
       );

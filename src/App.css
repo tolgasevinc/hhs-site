@@ -14,6 +14,19 @@ body {
   font-family: 'Quicksand', system-ui, 'Segoe UI', Roboto, sans-serif;
   background: var(--color-navy);
   color: #f5f8ff;
+  color-scheme: light;
+}
+
+button,
+input,
+select,
+textarea {
+  color-scheme: light;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--color-orange);
 }
 
 .page {
@@ -1303,7 +1316,7 @@ body {
 
 .adminQuoteQuestionList {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 .adminQuoteQuestionListCard,
@@ -1315,96 +1328,108 @@ body {
 
 .adminQuoteQuestionListCard {
   display: grid;
-  gap: 12px;
-  padding: 16px;
-}
-
-.adminQuoteQuestionListCardHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.adminQuoteQuestionListCardHeader div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-}
-
-.adminQuoteQuestionListCardHeader span,
-.adminStatusPill {
-  display: inline-flex;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
-  width: max-content;
-  min-height: 26px;
-  padding: 0 9px;
-  border-radius: 999px;
-  background: rgba(37, 54, 105, 0.08);
-  color: var(--color-navy);
-  font-size: 12px;
-  font-weight: 900;
+  gap: 14px;
+  padding: 12px 14px;
 }
 
-.adminStatusPill {
-  flex: 0 0 auto;
-  background: rgba(180, 35, 24, 0.08);
-  color: #b42318;
-}
-
-.adminStatusPill.active {
-  background: rgba(21, 128, 61, 0.1);
-  color: #15803d;
-}
-
-.adminQuoteQuestionListCard h3 {
-  margin: 0;
-  color: var(--color-navy);
-  font-size: 18px;
-  line-height: 1.25;
-}
-
-.adminQuoteQuestionListCard p {
-  margin: -4px 0 0;
-  color: var(--color-dark-gray);
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1.45;
-}
-
-.adminQuoteQuestionMeta {
+.adminQuoteQuestionOrder {
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
-  margin: 0;
-}
-
-.adminQuoteQuestionMeta div {
-  min-width: 0;
-  padding: 10px;
-  border-radius: 14px;
-  background: #f8f9fc;
-}
-
-.adminQuoteQuestionMeta dt {
+  gap: 4px;
+  min-width: 58px;
   color: var(--color-dark-gray);
   font-size: 11px;
   font-weight: 900;
   text-transform: uppercase;
 }
 
-.adminQuoteQuestionMeta dd {
-  overflow: hidden;
-  margin: 4px 0 0;
+.adminQuoteQuestionOrder input {
+  width: 58px;
+  min-height: 36px;
+  padding: 0 6px;
+  border: 1px solid rgba(114, 114, 114, 0.18);
+  border-radius: 12px;
+  background: #ffffff;
   color: var(--color-navy);
+  font: inherit;
   font-size: 13px;
-  font-weight: 900;
+  text-align: center;
+}
+
+.adminQuoteQuestionMain {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.adminQuoteQuestionAvatar,
+.adminQuoteQuestionImagePreview,
+.quoteQuestionAvatar {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  object-fit: cover;
+  box-shadow: 0 8px 20px rgba(10, 14, 28, 0.12);
+}
+
+.adminQuoteQuestionMain > div {
+  min-width: 0;
+}
+
+.adminStatusDot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgba(114, 114, 114, 0.48);
+}
+
+.adminStatusDot.active {
+  background: #15803d;
+}
+
+.adminQuoteQuestionListCard h3 {
+  overflow: hidden;
+  margin: 0;
+  color: var(--color-navy);
+  font-size: 15px;
+  line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.adminQuoteQuestionListCard p {
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: var(--color-dark-gray);
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminQuoteQuestionInlineMeta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 360px;
+}
+
+.adminQuoteQuestionInlineMeta span {
+  display: inline-flex;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #f8f9fc;
+  color: var(--color-dark-gray);
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .adminQuoteQuestionListCard > button {
-  justify-self: end;
   min-height: 36px;
   padding: 0 14px;
   border: 1px solid rgba(37, 54, 105, 0.16);
@@ -1436,6 +1461,127 @@ body {
   font-weight: 800;
 }
 
+.adminQuoteRequestPanel {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.adminQuoteRequestList {
+  display: grid;
+  gap: 12px;
+}
+
+.adminQuoteRequestCard {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(114, 114, 114, 0.12);
+  border-radius: 20px;
+  background: #ffffff;
+}
+
+.adminQuoteRequestHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.adminQuoteRequestHeader span,
+.adminQuoteRequestContact dt {
+  color: var(--color-orange);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.adminQuoteRequestHeader h3 {
+  margin: 3px 0;
+  color: var(--color-navy);
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+.adminQuoteRequestHeader p {
+  margin: 0;
+  color: var(--color-dark-gray);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.adminQuoteRequestStatus {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: #f8f9fc;
+  color: var(--color-dark-gray) !important;
+}
+
+.adminQuoteRequestContact {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.adminQuoteRequestContact div {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 14px;
+  background: #f8f9fc;
+}
+
+.adminQuoteRequestContact dd {
+  overflow: hidden;
+  margin: 4px 0 0;
+  color: var(--color-navy);
+  font-size: 13px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminQuoteRequestAnswers {
+  display: grid;
+  gap: 7px;
+}
+
+.adminQuoteRequestAnswers p {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.7fr) minmax(0, 1fr);
+  gap: 10px;
+  margin: 0;
+  color: var(--color-dark-gray);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.adminQuoteRequestAnswers strong {
+  color: var(--color-navy);
+}
+
+.adminQuoteRequestMessage summary {
+  cursor: pointer;
+  color: var(--color-navy);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.adminQuoteRequestMessage pre {
+  overflow-x: auto;
+  margin: 10px 0 0;
+  padding: 12px;
+  border-radius: 14px;
+  background: #f8f9fc;
+  color: var(--color-dark-gray);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: pre-wrap;
+}
+
 .adminProductForm label {
   display: grid;
   gap: 7px;
@@ -1455,6 +1601,13 @@ body {
   font: inherit;
   padding: 10px 12px;
   outline: 0;
+}
+
+.adminProductForm input[type='checkbox'],
+.adminProductForm input[type='radio'] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
 }
 
 .adminProductForm input:disabled {
@@ -1944,6 +2097,17 @@ body {
   margin-right: 0;
 }
 
+.adminQuoteQuestionImageControl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.adminQuoteQuestionImageControl .adminImageUploadControl {
+  min-width: 0;
+}
+
 .adminProductForm .adminStatusSwitch {
   display: inline-flex;
   align-items: center;
@@ -2245,6 +2409,18 @@ body {
   padding: 0 18px 18px;
 }
 
+.quoteSelectionEmpty {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 18px;
+  border: 1px dashed rgba(37, 54, 105, 0.18);
+  border-radius: 18px;
+  background: #f8f9fc;
+  color: var(--color-dark-gray);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .quoteCategoryCard {
   flex: 0 0 clamp(210px, 30%, 260px);
   min-width: clamp(210px, 30%, 260px);
@@ -2455,6 +2631,18 @@ body {
   font-weight: 900;
 }
 
+.quoteQuestionFieldTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.quoteQuestionFieldTitle > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
 .quoteQuestionField small {
   color: var(--color-dark-gray);
   font-size: 12px;
@@ -2481,6 +2669,11 @@ body {
   outline: 0;
 }
 
+.quoteQuestionField input[type='text'],
+.quoteQuestionField input[type='number'] {
+  background: #ffffff;
+}
+
 .quoteQuestionOptions {
   display: flex;
   flex-wrap: wrap;
@@ -2502,6 +2695,8 @@ body {
 }
 
 .quoteQuestionOptions input {
+  width: 16px;
+  height: 16px;
   margin: 0;
 }
 
@@ -2510,6 +2705,68 @@ body {
   color: var(--color-dark-gray);
   font-size: 13px;
   font-weight: 800;
+}
+
+.quoteContactStep {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid rgba(37, 54, 105, 0.12);
+  border-radius: 22px;
+  background: #ffffff;
+}
+
+.quoteContactGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.quoteContactGrid label {
+  display: grid;
+  gap: 7px;
+  color: var(--color-navy);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.quoteContactGrid input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(114, 114, 114, 0.18);
+  border-radius: 14px;
+  background: #ffffff;
+  color: var(--color-navy);
+  font: inherit;
+  font-weight: 800;
+  padding: 0 12px;
+  outline: 0;
+}
+
+.quotePhoneInput {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-height: 44px;
+  border: 1px solid rgba(114, 114, 114, 0.18);
+  border-radius: 14px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.quotePhoneInput span {
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
+  padding: 0 11px;
+  background: #f8f9fc;
+  color: var(--color-dark-gray);
+  font-weight: 900;
+}
+
+.quotePhoneInput input {
+  min-height: 42px;
+  border: 0;
+  border-radius: 0;
 }
 
 .quoteModalActions {
@@ -2541,6 +2798,21 @@ body {
   border: 1px solid rgba(37, 54, 105, 0.18);
   background: #ffffff;
   color: var(--color-navy);
+}
+
+.quoteModalActions button:not(.secondary):not(:disabled) {
+  border-color: var(--color-orange);
+  background: var(--color-orange);
+  color: #ffffff;
+}
+
+.quoteSubmitMessage {
+  flex: 1 0 100%;
+  margin: 0;
+  color: var(--color-dark-gray);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
 }
 
 .quoteModalActions button:disabled {
@@ -3247,6 +3519,13 @@ article p {
   font-weight: 700;
 }
 
+.serviceRequestForm input[type='checkbox'],
+.serviceRequestForm input[type='radio'] {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+}
+
 .serviceRequestForm textarea {
   min-height: 130px;
   resize: vertical;
@@ -3703,7 +3982,8 @@ article p {
   }
 
   .adminAvatarUpload,
-  .adminImageUploadControl {
+  .adminImageUploadControl,
+  .adminQuoteQuestionImageControl {
     grid-template-columns: 1fr;
   }
 
@@ -3727,8 +4007,23 @@ article p {
   }
 
   .adminQuoteQuestionToolbar,
-  .adminQuoteQuestionMeta {
+  .adminQuoteQuestionListCard {
     grid-template-columns: 1fr;
+  }
+
+  .adminQuoteQuestionInlineMeta {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .adminQuoteRequestHeader,
+  .adminQuoteRequestContact,
+  .adminQuoteRequestAnswers p {
+    grid-template-columns: 1fr;
+  }
+
+  .adminQuoteRequestHeader {
+    display: grid;
   }
 
   .adminCategoryList {
@@ -3822,6 +4117,10 @@ article p {
 
   .quoteQuestionOptions {
     display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .quoteContactGrid {
     grid-template-columns: 1fr;
   }
 
