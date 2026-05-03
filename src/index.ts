@@ -4,6 +4,8 @@ export interface Env {
   ADMIN_BOOTSTRAP_TOKEN?: string;
   RESEND_API_KEY?: string;
   SERVICE_REQUEST_FROM_EMAIL?: string;
+  PUSHOVER_API_TOKEN?: string;
+  PUSHOVER_USER_KEY?: string;
 }
 
 type ProductChild = {
@@ -95,6 +97,13 @@ type WpSourceSettingsInput = {
   includeDrafts?: boolean;
 };
 
+type PushoverSettingsInput = {
+  userKey: string;
+  apiToken?: string;
+  emailAddress?: string;
+  isActive?: boolean;
+};
+
 type ServiceRequestInput = {
   requestType: string;
   firstName: string;
@@ -150,11 +159,29 @@ type ServiceRequestRecord = ServiceRequestInput & {
   id: string;
   productTitle: string;
   emailSent: boolean;
+  pushoverSent?: boolean;
+};
+
+type ServiceRequestRow = {
+  id: string;
+  request_type: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  product_key: string;
+  product_title: string;
+  description: string;
+  status: string;
+  email_sent: number;
+  pushover_sent: number;
+  created_at: string;
+  updated_at: string;
 };
 
 type QuoteRequestRecord = QuoteRequestInput & {
   id: string;
   whatsappUrl: string;
+  pushoverSent?: boolean;
 };
 
 type QuoteRequestRow = {
@@ -278,6 +305,15 @@ type WpSourceSettingsRow = {
   last_test_at: string | null;
   last_test_status: string;
   last_test_message: string;
+};
+
+type PushoverSettingsRow = {
+  id: string;
+  user_key: string;
+  api_token: string;
+  email_address: string;
+  is_active: number;
+  updated_at: string;
 };
 
 type AdminUserInput = {
@@ -458,6 +494,14 @@ const getWpSourceSettingsRequestBody = async (request: Request) => {
   }
 };
 
+const getPushoverSettingsRequestBody = async (request: Request) => {
+  try {
+    return (await request.json()) as PushoverSettingsInput;
+  } catch {
+    return null;
+  }
+};
+
 const getServiceRequestBody = async (request: Request) => {
   try {
     return (await request.json()) as ServiceRequestInput;
@@ -593,6 +637,16 @@ const isValidQuoteRequestInput = (body: QuoteRequestInput | null): body is Quote
       body.phone?.trim() &&
       body.email?.trim() &&
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim()),
+  );
+};
+
+const isValidPushoverSettingsInput = (body: PushoverSettingsInput | null): body is PushoverSettingsInput => {
+  return Boolean(
+    body &&
+      typeof body.userKey === 'string' &&
+      (body.apiToken === undefined || typeof body.apiToken === 'string') &&
+      (body.emailAddress === undefined || typeof body.emailAddress === 'string') &&
+      (body.isActive === undefined || typeof body.isActive === 'boolean'),
   );
 };
 
@@ -1650,6 +1704,118 @@ const upsertWpSourceSettings = async (db: D1Database, settings: WpSourceSettings
   return getWpSourceSettings(db);
 };
 
+const defaultPushoverSettings = {
+  userKey: '',
+  apiToken: '',
+  emailAddress: 'g76fqg9ggn@pomail.net',
+  isActive: false,
+  hasApiToken: false,
+};
+
+const mapPushoverSettings = (settings: PushoverSettingsRow) => ({
+  userKey: settings.user_key,
+  apiToken: '',
+  emailAddress: settings.email_address ?? defaultPushoverSettings.emailAddress,
+  isActive: Boolean(settings.is_active),
+  hasApiToken: Boolean(settings.api_token),
+});
+
+const ensurePushoverSettingsTable = async (db: D1Database) => {
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS pushover_settings (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        user_key TEXT NOT NULL DEFAULT '',
+        api_token TEXT NOT NULL DEFAULT '',
+        email_address TEXT NOT NULL DEFAULT 'g76fqg9ggn@pomail.net',
+        is_active INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+    )
+    .run();
+
+  const columns = await db.prepare('PRAGMA table_info(pushover_settings)').all<{ name: string }>();
+  const hasEmailAddressColumn = columns.results.some((column) => column.name === 'email_address');
+
+  if (!hasEmailAddressColumn) {
+    await db
+      .prepare("ALTER TABLE pushover_settings ADD COLUMN email_address TEXT NOT NULL DEFAULT 'g76fqg9ggn@pomail.net'")
+      .run();
+  }
+};
+
+const getPushoverSettingsRow = async (db: D1Database) => {
+  await ensurePushoverSettingsTable(db);
+
+  return db
+    .prepare(
+      `SELECT id, user_key, api_token, email_address, is_active, updated_at
+      FROM pushover_settings
+      WHERE id = 'default'
+      LIMIT 1`,
+    )
+    .first<PushoverSettingsRow>();
+};
+
+const getPushoverSettings = async (db: D1Database) => {
+  const settings = await getPushoverSettingsRow(db);
+
+  return settings ? mapPushoverSettings(settings) : defaultPushoverSettings;
+};
+
+const getPushoverCredentials = async (db: D1Database, env: Env) => {
+  const settings = await getPushoverSettingsRow(db).catch(() => null);
+
+  if (settings) {
+    if (!settings.is_active) {
+      return null;
+    }
+
+    if (!(settings.user_key && settings.api_token) && !settings.email_address) {
+      return null;
+    }
+
+    return {
+      userKey: settings.user_key,
+      apiToken: settings.api_token,
+      emailAddress: settings.email_address,
+    };
+  }
+
+  if (env.PUSHOVER_USER_KEY && env.PUSHOVER_API_TOKEN) {
+    return {
+      userKey: env.PUSHOVER_USER_KEY,
+      apiToken: env.PUSHOVER_API_TOKEN,
+      emailAddress: '',
+    };
+  }
+
+  return null;
+};
+
+const upsertPushoverSettings = async (db: D1Database, settings: PushoverSettingsInput) => {
+  await ensurePushoverSettingsTable(db);
+  const existing = await getPushoverSettingsRow(db);
+  const apiToken = settings.apiToken?.trim() || existing?.api_token || '';
+  const emailAddress = settings.emailAddress?.trim() || existing?.email_address || defaultPushoverSettings.emailAddress;
+
+  await db
+    .prepare(
+      `INSERT INTO pushover_settings (id, user_key, api_token, email_address, is_active, updated_at)
+      VALUES ('default', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        user_key = excluded.user_key,
+        api_token = excluded.api_token,
+        email_address = excluded.email_address,
+        is_active = excluded.is_active,
+        updated_at = CURRENT_TIMESTAMP`,
+    )
+    .bind(settings.userKey.trim(), apiToken, emailAddress, settings.isActive === true ? 1 : 0)
+    .run();
+
+  return getPushoverSettings(db);
+};
+
 const quoteMysqlIdentifier = (value: string) => `\`${value.replaceAll('`', '``')}\``;
 
 const testWpSourceSettings = async (db: D1Database, settings: WpSourceSettingsInput) => {
@@ -1666,6 +1832,7 @@ const testWpSourceSettings = async (db: D1Database, settings: WpSourceSettingsIn
       password,
       database: settings.database.trim(),
       connectTimeout: 10000,
+      disableEval: true,
     })) as unknown as MysqlConnection;
     const [tableRows] = await connection.query('SHOW TABLES');
     const tableNames = (tableRows as Record<string, string>[])
@@ -1740,11 +1907,19 @@ const ensureServiceRequestsTable = async (db: D1Database) => {
         description TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL DEFAULT 'new',
         email_sent INTEGER NOT NULL DEFAULT 0,
+        pushover_sent INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )`,
     )
     .run();
+
+  const columns = await db.prepare('PRAGMA table_info(service_requests)').all<{ name: string }>();
+  const hasPushoverSentColumn = columns.results.some((column) => column.name === 'pushover_sent');
+
+  if (!hasPushoverSentColumn) {
+    await db.prepare('ALTER TABLE service_requests ADD COLUMN pushover_sent INTEGER NOT NULL DEFAULT 0').run();
+  }
 
   await db.prepare('CREATE INDEX IF NOT EXISTS idx_service_requests_created_at ON service_requests(created_at)').run();
   await db.prepare('CREATE INDEX IF NOT EXISTS idx_service_requests_status ON service_requests(status)').run();
@@ -1767,6 +1942,84 @@ const getCatalogItemTitle = async (db: D1Database, key = '') => {
     .first<{ title: string }>();
 
   return category?.title ?? '';
+};
+
+const truncateNotificationText = (value: string, maxLength = 900) => {
+  const trimmedValue = value.trim();
+
+  return trimmedValue.length > maxLength ? `${trimmedValue.slice(0, maxLength - 1)}…` : trimmedValue;
+};
+
+const sendPushoverEmailNotification = async (
+  env: Env,
+  recipientEmail: string,
+  title: string,
+  message: string,
+  options: { url?: string; urlTitle?: string } = {},
+) => {
+  if (!env.RESEND_API_KEY || !recipientEmail) {
+    return false;
+  }
+
+  const text = [message, options.url ? `${options.urlTitle ?? 'Link'}: ${options.url}` : ''].filter(Boolean).join('\n\n');
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${env.RESEND_API_KEY}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: env.SERVICE_REQUEST_FROM_EMAIL ?? 'HHS Otomatik Kapı <onboarding@resend.dev>',
+      to: [recipientEmail],
+      subject: title,
+      text: truncateNotificationText(text),
+    }),
+  });
+
+  return response.ok;
+};
+
+const sendPushoverNotification = async (
+  db: D1Database,
+  env: Env,
+  title: string,
+  message: string,
+  options: { priority?: number; url?: string; urlTitle?: string } = {},
+) => {
+  const credentials = await getPushoverCredentials(db, env);
+
+  if (!credentials) {
+    return false;
+  }
+
+  if (credentials.apiToken && credentials.userKey) {
+    try {
+      const response = await fetch('https://api.pushover.net/1/messages.json', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          token: credentials.apiToken,
+          user: credentials.userKey,
+          title,
+          message: truncateNotificationText(message),
+          priority: options.priority ?? 0,
+          ...(options.url ? { url: options.url } : {}),
+          ...(options.urlTitle ? { url_title: options.urlTitle } : {}),
+        }),
+      });
+      const data = (await response.json().catch(() => null)) as { status?: number } | null;
+
+      if (response.ok && data?.status === 1) {
+        return true;
+      }
+    } catch {
+      // Fall through to the Pushover e-mail gateway fallback below.
+    }
+  }
+
+  return sendPushoverEmailNotification(env, credentials.emailAddress, title, message, options).catch(() => false);
 };
 
 const sendServiceRequestEmail = async (
@@ -1806,6 +2059,27 @@ const sendServiceRequestEmail = async (
   });
 
   return response.ok;
+};
+
+const sendServiceRequestPushover = (db: D1Database, env: Env, serviceRequest: ServiceRequestRecord) => {
+  const customerName = `${serviceRequest.firstName} ${serviceRequest.lastName}`.trim();
+  const productLine = serviceRequest.productTitle || serviceRequest.productKey || 'Seçilmedi';
+  const message = [
+    `Tip: ${serviceRequest.requestType}`,
+    `Müşteri: ${customerName}`,
+    `Telefon: ${serviceRequest.phone}`,
+    `Ürün: ${productLine}`,
+    serviceRequest.description ? `Açıklama: ${serviceRequest.description}` : '',
+    `Kayıt No: ${serviceRequest.id}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return sendPushoverNotification(db, env, 'Yeni servis kaydı', message, {
+    priority: 1,
+    url: 'https://hhsotomatikkapi.com/panel',
+    urlTitle: 'Admin paneli aç',
+  });
 };
 
 const createServiceRequest = async (db: D1Database, env: Env, input: ServiceRequestInput) => {
@@ -1854,15 +2128,64 @@ const createServiceRequest = async (db: D1Database, env: Env, input: ServiceRequ
 
   const emailSent = await sendServiceRequestEmail(env, contactSettings.email, serviceRequest).catch(() => false);
   serviceRequest.emailSent = emailSent;
+  serviceRequest.pushoverSent = await sendServiceRequestPushover(db, env, serviceRequest).catch(() => false);
 
-  if (emailSent) {
+  if (emailSent || serviceRequest.pushoverSent) {
     await db
-      .prepare('UPDATE service_requests SET email_sent = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-      .bind(serviceRequest.id)
+      .prepare(
+        `UPDATE service_requests
+        SET email_sent = ?, pushover_sent = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?`,
+      )
+      .bind(emailSent ? 1 : 0, serviceRequest.pushoverSent ? 1 : 0, serviceRequest.id)
       .run();
   }
 
   return serviceRequest;
+};
+
+const mapServiceRequest = (request: ServiceRequestRow) => ({
+  id: request.id,
+  requestType: request.request_type,
+  firstName: request.first_name,
+  lastName: request.last_name,
+  fullName: `${request.first_name} ${request.last_name}`.trim(),
+  phone: request.phone,
+  productKey: request.product_key,
+  productTitle: request.product_title,
+  description: request.description,
+  status: request.status,
+  emailSent: Boolean(request.email_sent),
+  pushoverSent: Boolean(request.pushover_sent),
+  createdAt: request.created_at,
+  updatedAt: request.updated_at,
+});
+
+const listServiceRequests = async (db: D1Database) => {
+  await ensureServiceRequestsTable(db);
+
+  const requests = await db
+    .prepare(
+      `SELECT id, request_type, first_name, last_name, phone, product_key, product_title, description,
+        status, email_sent, pushover_sent, created_at, updated_at
+      FROM service_requests
+      ORDER BY created_at DESC
+      LIMIT 200`,
+    )
+    .all<ServiceRequestRow>();
+
+  return requests.results.map(mapServiceRequest);
+};
+
+const closeServiceRequest = async (db: D1Database, id: string) => {
+  await ensureServiceRequestsTable(db);
+
+  await db
+    .prepare("UPDATE service_requests SET status = 'closed', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+    .bind(id)
+    .run();
+
+  return listServiceRequests(db);
 };
 
 const ensureQuoteRequestsTable = async (db: D1Database) => {
@@ -1892,7 +2215,7 @@ const ensureQuoteRequestsTable = async (db: D1Database) => {
   await db.prepare('CREATE INDEX IF NOT EXISTS idx_quote_requests_status ON quote_requests(status)').run();
 };
 
-const createQuoteRequest = async (db: D1Database, input: QuoteRequestInput) => {
+const createQuoteRequest = async (db: D1Database, env: Env, input: QuoteRequestInput) => {
   await ensureQuoteRequestsTable(db);
 
   const contactSettings = await getContactSettings(db);
@@ -1954,7 +2277,38 @@ const createQuoteRequest = async (db: D1Database, input: QuoteRequestInput) => {
     )
     .run();
 
+  quoteRequest.pushoverSent = await sendQuoteRequestPushover(db, env, quoteRequest).catch(() => false);
+
   return quoteRequest;
+};
+
+const sendQuoteRequestPushover = (db: D1Database, env: Env, quoteRequest: QuoteRequestRecord) => {
+  const customerLine = quoteRequest.isAnonymous
+    ? 'Müşteri: İsimsiz'
+    : `Müşteri: ${quoteRequest.fullName || '-'} / ${quoteRequest.phone || '-'} / ${quoteRequest.email || '-'}`;
+  const answerSummary = (quoteRequest.answers ?? [])
+    .map((answer) => {
+      const answerText = Array.isArray(answer.answer) ? answer.answer.join(', ') : answer.answer;
+
+      return answerText ? `${answer.question}: ${answerText}` : '';
+    })
+    .filter(Boolean)
+    .join('\n');
+  const message = [
+    `Kategori: ${quoteRequest.categoryTitle || quoteRequest.categoryKey}`,
+    `Ürün: ${quoteRequest.productTitle || quoteRequest.productKey}`,
+    customerLine,
+    answerSummary,
+    `Kayıt No: ${quoteRequest.id}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return sendPushoverNotification(db, env, 'Yeni teklif talebi', message, {
+    priority: 1,
+    url: 'https://hhsotomatikkapi.com/panel',
+    urlTitle: 'Teklif taleplerini aç',
+  });
 };
 
 const mapQuoteRequest = (request: QuoteRequestRow) => {
@@ -2014,6 +2368,17 @@ const listQuoteRequests = async (db: D1Database) => {
     .all<QuoteRequestRow>();
 
   return requests.results.map(mapQuoteRequest);
+};
+
+const closeQuoteRequest = async (db: D1Database, id: string) => {
+  await ensureQuoteRequestsTable(db);
+
+  await db
+    .prepare("UPDATE quote_requests SET status = 'closed', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+    .bind(id)
+    .run();
+
+  return listQuoteRequests(db);
 };
 
 const getCategory = async (db: D1Database, key: string) => {
@@ -2311,7 +2676,7 @@ const listBlogTags = async (db: D1Database) => {
   return tags.results.map((tag) => ({ key: tag.key, title: tag.title, slug: tag.slug }));
 };
 
-const listBlogPosts = async (db: D1Database, includeDrafts = false, limit = 100) => {
+const listBlogPosts = async (db: D1Database, includeDrafts = false, limit = 100, offset = 0) => {
   const posts = await db
     .prepare(
       `SELECT key, title, summary, target_keyword, content, slug, meta_title, meta_keywords, meta_description,
@@ -2319,9 +2684,9 @@ const listBlogPosts = async (db: D1Database, includeDrafts = false, limit = 100)
       FROM blog_posts
       ${includeDrafts ? '' : "WHERE status = 'published'"}
       ORDER BY COALESCE(NULLIF(published_at, ''), created_at) DESC
-      LIMIT ?`,
+      LIMIT ? OFFSET ?`,
     )
-    .bind(limit)
+    .bind(limit, offset)
     .all<BlogPostRow>();
   const postKeys = posts.results.map((post) => post.key);
 
@@ -3055,7 +3420,83 @@ export default {
       });
     }
 
-    if (url.pathname === '/api/service-requests' && request.method === 'POST') {
+    if (url.pathname === '/api/pushover-settings') {
+      const admin = await authenticateAdmin(request, env.DB);
+
+      if (!admin) {
+        return unauthorized();
+      }
+
+      if (!hasAdminModule(admin, 'settings')) {
+        return forbidden();
+      }
+
+      if (request.method === 'GET') {
+        return json({
+          ok: true,
+          settings: await getPushoverSettings(env.DB),
+        });
+      }
+
+      if (request.method === 'POST' || request.method === 'PUT') {
+        const body = await getPushoverSettingsRequestBody(request);
+
+        if (!isValidPushoverSettingsInput(body)) {
+          return json({ ok: false, error: 'Invalid pushover settings payload' }, { status: 400 });
+        }
+
+        return json({
+          ok: true,
+          settings: await upsertPushoverSettings(env.DB, body),
+        });
+      }
+    }
+
+    if (url.pathname.startsWith('/api/service-requests/')) {
+      const admin = await authenticateAdmin(request, env.DB);
+
+      if (!admin) {
+        return unauthorized();
+      }
+
+      if (!hasAdminModule(admin, 'settings')) {
+        return forbidden();
+      }
+
+      const requestId = decodeURIComponent(url.pathname.replace('/api/service-requests/', '').replace(/\/$/, ''));
+
+      if (request.method === 'PATCH') {
+        return json({
+          ok: true,
+          requests: await closeServiceRequest(env.DB, requestId),
+        });
+      }
+
+      return notFound();
+    }
+
+    if (url.pathname === '/api/service-requests') {
+      if (request.method === 'GET') {
+        const admin = await authenticateAdmin(request, env.DB);
+
+        if (!admin) {
+          return unauthorized();
+        }
+
+        if (!hasAdminModule(admin, 'settings')) {
+          return forbidden();
+        }
+
+        return json({
+          ok: true,
+          requests: await listServiceRequests(env.DB),
+        });
+      }
+
+      if (request.method !== 'POST') {
+        return notFound();
+      }
+
       const body = await getServiceRequestBody(request);
 
       if (!isValidServiceRequestInput(body)) {
@@ -3069,9 +3510,44 @@ export default {
           ok: true,
           request: serviceRequest,
           emailSent: serviceRequest.emailSent,
+          pushoverSent: serviceRequest.pushoverSent === true,
         },
         { status: 201 },
       );
+    }
+
+    if (url.pathname === '/api/quote-requests/test-pushover' && request.method === 'POST') {
+      const admin = await authenticateAdmin(request, env.DB);
+
+      if (!admin) {
+        return unauthorized();
+      }
+
+      if (!hasAdminModule(admin, 'settings')) {
+        return forbidden();
+      }
+
+      if (!(await getPushoverCredentials(env.DB, env))) {
+        return json({ ok: false, error: 'pushover_not_configured' }, { status: 400 });
+      }
+
+      const pushoverSent = await sendPushoverNotification(
+        env.DB,
+        env,
+        'HHS deneme bildirimi',
+        `Pushover deneme bildirimi başarıyla tetiklendi.\nKullanıcı: ${admin.displayName}`,
+        {
+          priority: 0,
+          url: 'https://hhsotomatikkapi.com/panel',
+          urlTitle: 'Admin paneli aç',
+        },
+      ).catch(() => false);
+
+      if (!pushoverSent) {
+        return json({ ok: false, error: 'pushover_send_failed' }, { status: 502 });
+      }
+
+      return json({ ok: true, pushoverSent: true });
     }
 
     if (url.pathname === '/api/quote-requests') {
@@ -3102,16 +3578,40 @@ export default {
         return json({ ok: false, error: 'Invalid quote request payload' }, { status: 400 });
       }
 
-      const quoteRequest = await createQuoteRequest(env.DB, body);
+      const quoteRequest = await createQuoteRequest(env.DB, env, body);
 
       return json(
         {
           ok: true,
           request: quoteRequest,
           whatsappUrl: quoteRequest.whatsappUrl,
+          pushoverSent: quoteRequest.pushoverSent === true,
         },
         { status: 201 },
       );
+    }
+
+    if (url.pathname.startsWith('/api/quote-requests/')) {
+      const admin = await authenticateAdmin(request, env.DB);
+
+      if (!admin) {
+        return unauthorized();
+      }
+
+      if (!hasAdminModule(admin, 'settings')) {
+        return forbidden();
+      }
+
+      const requestId = decodeURIComponent(url.pathname.replace('/api/quote-requests/', '').replace(/\/$/, ''));
+
+      if (request.method === 'PATCH') {
+        return json({
+          ok: true,
+          requests: await closeQuoteRequest(env.DB, requestId),
+        });
+      }
+
+      return notFound();
     }
 
     if (url.pathname === '/api/blog-categories') {
@@ -3193,9 +3693,12 @@ export default {
           }
         }
 
+        const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 100) || 100, 1), 100);
+        const offset = Math.max(Number(url.searchParams.get('offset') ?? 0) || 0, 0);
+
         return json({
           ok: true,
-          posts: await listBlogPosts(env.DB, includeDrafts, Number(url.searchParams.get('limit') ?? 100)),
+          posts: await listBlogPosts(env.DB, includeDrafts, limit, offset),
         });
       }
 

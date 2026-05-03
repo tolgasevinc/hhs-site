@@ -1,4 +1,4 @@
-import { type ChangeEvent, type FormEvent, type PointerEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type ChangeEvent, type FormEvent, type PointerEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import {
@@ -31,6 +31,7 @@ const headerItemAnimation = {
 };
 
 const languages = ['TR', 'EN', 'DE'];
+const blogIndexPageSize = 9;
 
 type AdminProduct = {
   key: string;
@@ -87,6 +88,62 @@ type BlogPost = {
   publishedAt: string;
   categories: BlogTaxonomyItem[];
   tags: BlogTaxonomyItem[];
+};
+
+type BlogImportPreviewImage = {
+  sourceUrl: string;
+  previewUrl: string;
+  relativePath?: string;
+  matchedBy?: string;
+};
+
+type BlogImportPayload = {
+  key: string;
+  title: string;
+  summary: string;
+  targetKeyword: string;
+  content: string;
+  slug: string;
+  metaTitle: string;
+  metaKeywords: string;
+  metaDescription: string;
+  image: string;
+  imageAlt: string;
+  oldUrl: string;
+  status: 'draft' | 'published';
+  publishedAt: string;
+  categories: string[];
+  tags: string[];
+  seoScore: number;
+};
+
+type BlogImportPreviewPost = {
+  id: string;
+  payload: BlogImportPayload;
+  categories: BlogTaxonomyItem[];
+  preview: {
+    summaryText: string;
+    content: string;
+    featuredImage: BlogImportPreviewImage;
+    contentImages: BlogImportPreviewImage[];
+    imageFailures: BlogImportPreviewImage[];
+  };
+};
+
+type BlogImportPreview = {
+  generatedAt: string;
+  source: {
+    sqlFile: string;
+    uploadsRoot: string;
+    detectedPrefixes: string[];
+  };
+  totals: {
+    posts: number;
+    availableImagesByName: number;
+    imageFailures: number;
+  };
+  posts: BlogImportPreviewPost[];
+  imageFailures: (BlogImportPreviewImage & { post?: string; url?: string })[];
 };
 
 type ProductFormState = {
@@ -254,6 +311,14 @@ type WpSourceSettings = {
   lastTestMessage?: string;
 };
 
+type PushoverSettings = {
+  userKey: string;
+  apiToken: string;
+  emailAddress: string;
+  isActive: boolean;
+  hasApiToken?: boolean;
+};
+
 type WpSourceTestResult = {
   connected: boolean;
   tables: string[];
@@ -340,8 +405,34 @@ type QuoteRequest = {
   updatedAt: string;
 };
 
-type AdminSection = 'products' | 'blog' | 'assets' | 'quoteQuestions' | 'quoteRequests' | 'users' | 'database';
-type SettingsTab = 'footer' | 'contact' | 'wordpress';
+type ServiceRequest = {
+  id: string;
+  requestType: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  phone: string;
+  productKey: string;
+  productTitle: string;
+  description: string;
+  status: string;
+  emailSent: boolean;
+  pushoverSent: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type AdminSection =
+  | 'products'
+  | 'blog'
+  | 'blogImport'
+  | 'assets'
+  | 'quoteQuestions'
+  | 'quoteRequests'
+  | 'serviceRequests'
+  | 'users'
+  | 'database';
+type SettingsTab = 'footer' | 'contact' | 'wordpress' | 'pushover';
 
 type DatabaseColumn = {
   name: string;
@@ -433,6 +524,14 @@ const defaultWpSourceSettings: WpSourceSettings = {
   lastTestAt: '',
   lastTestStatus: '',
   lastTestMessage: '',
+};
+
+const defaultPushoverSettings: PushoverSettings = {
+  userKey: '',
+  apiToken: '',
+  emailAddress: 'g76fqg9ggn@pomail.net',
+  isActive: false,
+  hasApiToken: false,
 };
 
 const createEmptyQuoteQuestionForm = (): QuoteQuestionFormState => ({
@@ -808,6 +907,7 @@ const createProductImageVariants = async (file: File, focalPoints: CropFocalPoin
 
 function App() {
   const isPanelPage = window.location.pathname.toLowerCase() === '/panel';
+  const isBlogIndexPage = window.location.pathname.toLowerCase() === '/blog';
   const blogSlug = window.location.pathname.match(/^\/blog\/([^/]+)$/)?.[1] ?? '';
   const [language, setLanguage] = useState('TR');
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
@@ -815,6 +915,7 @@ function App() {
   const [isServiceTypeMenuOpen, setIsServiceTypeMenuOpen] = useState(false);
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const [isContactMenuOpen, setIsContactMenuOpen] = useState(false);
+  const [activeLatestBlogIndex, setActiveLatestBlogIndex] = useState(0);
   const [selectedQuoteCategoryKey, setSelectedQuoteCategoryKey] = useState('');
   const [selectedQuoteProductKey, setSelectedQuoteProductKey] = useState('');
   const [hoveredCategoryGalleryIndex, setHoveredCategoryGalleryIndex] = useState<number | null>(null);
@@ -823,15 +924,24 @@ function App() {
   const [adminSection, setAdminSection] = useState<AdminSection>('products');
   const [adminProducts, setAdminProducts] = useState<AdminProduct[]>([]);
   const [adminCategories, setAdminCategories] = useState<AdminCategory[]>([]);
+  const [adminProductCategoryFilter, setAdminProductCategoryFilter] = useState('');
   const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
   const [selectedBlogPost, setSelectedBlogPost] = useState<BlogPost | null>(null);
+  const [currentBlogPage, setCurrentBlogPage] = useState(1);
+  const [isLoadingMoreBlogPosts, setIsLoadingMoreBlogPosts] = useState(false);
+  const [hasMoreBlogPosts, setHasMoreBlogPosts] = useState(false);
   const [blogCategories, setBlogCategories] = useState<BlogTaxonomyItem[]>([]);
   const [blogTags, setBlogTags] = useState<BlogTaxonomyItem[]>([]);
+  const [blogImportPreview, setBlogImportPreview] = useState<BlogImportPreview | null>(null);
+  const [selectedBlogImportIds, setSelectedBlogImportIds] = useState<Set<string>>(new Set());
+  const [importedBlogImportIds, setImportedBlogImportIds] = useState<Set<string>>(new Set());
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
   const [quoteQuestions, setQuoteQuestions] = useState<QuoteQuestion[]>([]);
   const [quoteRequests, setQuoteRequests] = useState<QuoteRequest[]>([]);
+  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [contactSettings, setContactSettings] = useState<ContactSettings>(defaultContactSettings);
   const [wpSourceSettings, setWpSourceSettings] = useState<WpSourceSettings>(defaultWpSourceSettings);
+  const [pushoverSettings, setPushoverSettings] = useState<PushoverSettings>(defaultPushoverSettings);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [databaseTables, setDatabaseTables] = useState<DatabaseTable[]>([]);
   const [assets, setAssets] = useState<AssetItem[]>([]);
@@ -852,19 +962,26 @@ function App() {
   const [isSavingContactSettings, setIsSavingContactSettings] = useState(false);
   const [isSavingQuoteQuestions, setIsSavingQuoteQuestions] = useState(false);
   const [isSavingWpSourceSettings, setIsSavingWpSourceSettings] = useState(false);
+  const [isSavingPushoverSettings, setIsSavingPushoverSettings] = useState(false);
   const [isTestingWpSourceSettings, setIsTestingWpSourceSettings] = useState(false);
   const [isSubmittingQuoteRequest, setIsSubmittingQuoteRequest] = useState(false);
   const [isSubmittingServiceRequest, setIsSubmittingServiceRequest] = useState(false);
   const [isSavingUser, setIsSavingUser] = useState(false);
   const [isLoadingDatabaseTables, setIsLoadingDatabaseTables] = useState(false);
   const [isLoadingQuoteRequests, setIsLoadingQuoteRequests] = useState(false);
+  const [isLoadingServiceRequests, setIsLoadingServiceRequests] = useState(false);
+  const [closingRequestId, setClosingRequestId] = useState('');
+  const [isSendingPushoverTest, setIsSendingPushoverTest] = useState(false);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
+  const [isLoadingBlogImportPreview, setIsLoadingBlogImportPreview] = useState(false);
+  const [isImportingBlogPreview, setIsImportingBlogPreview] = useState(false);
   const [isDeletingSelectedAssets, setIsDeletingSelectedAssets] = useState(false);
   const [isUploadingProductImage, setIsUploadingProductImage] = useState(false);
   const [isUploadingBlogImage, setIsUploadingBlogImage] = useState(false);
   const [isUploadingCategoryImage, setIsUploadingCategoryImage] = useState(false);
   const [isUploadingQuoteQuestionImage, setIsUploadingQuoteQuestionImage] = useState(false);
   const [isUploadingUserAvatar, setIsUploadingUserAvatar] = useState(false);
+  const [isConfirmingProductDelete, setIsConfirmingProductDelete] = useState(false);
   const [isConfirmingCategoryDelete, setIsConfirmingCategoryDelete] = useState(false);
   const [isConfirmingUserDisable, setIsConfirmingUserDisable] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('footer');
@@ -879,6 +996,7 @@ function App() {
   const [quoteSubmitMessage, setQuoteSubmitMessage] = useState('');
   const [contactSettingsForm, setContactSettingsForm] = useState<ContactSettings>(defaultContactSettings);
   const [wpSourceSettingsForm, setWpSourceSettingsForm] = useState<WpSourceSettings>(defaultWpSourceSettings);
+  const [pushoverSettingsForm, setPushoverSettingsForm] = useState<PushoverSettings>(defaultPushoverSettings);
   const [wpSourceTestResult, setWpSourceTestResult] = useState<WpSourceTestResult | null>(null);
   const [serviceRequestForm, setServiceRequestForm] = useState<ServiceRequestFormState>(emptyServiceRequestForm);
   const [serviceRequestMessage, setServiceRequestMessage] = useState('');
@@ -932,6 +1050,33 @@ function App() {
     }
   };
 
+  const loadBlogPage = useCallback(async (page: number) => {
+    if (!isBlogIndexPage || isLoadingMoreBlogPosts || page < 1) {
+      return;
+    }
+
+    setIsLoadingMoreBlogPosts(true);
+
+    try {
+      const offset = (page - 1) * blogIndexPageSize;
+      const response = await fetch(apiUrl(`/api/blog-posts?limit=${blogIndexPageSize}&offset=${offset}`));
+      const data = (await response.json().catch(() => null)) as { posts?: BlogPost[] } | null;
+      const nextPosts = data?.posts ?? [];
+
+      if (!response.ok) {
+        setHasMoreBlogPosts(false);
+        return;
+      }
+
+      setBlogPosts(nextPosts);
+      setCurrentBlogPage(page);
+      setHasMoreBlogPosts(nextPosts.length === blogIndexPageSize);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } finally {
+      setIsLoadingMoreBlogPosts(false);
+    }
+  }, [isBlogIndexPage, isLoadingMoreBlogPosts]);
+
   const canAccessModule = (moduleKey: string) => {
     return Boolean(adminUser?.modules.includes(moduleKey));
   };
@@ -941,7 +1086,11 @@ function App() {
       return 'products';
     }
 
-    if (section === 'quoteQuestions' || section === 'quoteRequests') {
+    if (section === 'blogImport') {
+      return 'blog';
+    }
+
+    if (section === 'quoteQuestions' || section === 'quoteRequests' || section === 'serviceRequests') {
       return 'settings';
     }
 
@@ -962,9 +1111,11 @@ function App() {
           ? 'quoteQuestions'
           : canAccessAdminSection('quoteRequests')
             ? 'quoteRequests'
-            : canAccessAdminSection('users')
-              ? 'users'
-              : 'database';
+            : canAccessAdminSection('serviceRequests')
+              ? 'serviceRequests'
+              : canAccessAdminSection('users')
+                ? 'users'
+                : 'database';
   const phonePrimaryHref = createPhoneHref(contactSettings.phonePrimary);
   const phoneSecondaryHref = createPhoneHref(contactSettings.phoneSecondary);
   const whatsappHref = createWhatsAppHref(contactSettings.whatsapp);
@@ -1043,6 +1194,9 @@ function App() {
   const visibleAssets = assets.filter(
     (asset) => activeAssetFolder === 'all' || getAssetFolderKey(asset.key) === activeAssetFolder,
   );
+  const visibleAdminProducts = adminProductCategoryFilter
+    ? adminProducts.filter((product) => product.categoryKey === adminProductCategoryFilter)
+    : adminProducts;
   const selectedVisibleAssetCount = visibleAssets.filter((asset) => selectedAssetKeys.has(asset.key)).length;
   const quoteAnswerSummary = activeQuoteQuestions
     .map((question) => {
@@ -1081,8 +1235,16 @@ function App() {
 
       return Array.isArray(answer) ? answer.length === 0 : !answer?.trim();
     });
-  const latestBlogPosts = blogPosts.filter((post) => post.status === 'published').slice(0, 3);
+  const publishedBlogPosts = blogPosts.filter((post) => post.status === 'published');
+  const latestBlogPosts = publishedBlogPosts.slice(0, 5);
+  const normalizedLatestBlogIndex = latestBlogPosts.length ? activeLatestBlogIndex % latestBlogPosts.length : 0;
+  const activeLatestBlogPost = latestBlogPosts[normalizedLatestBlogIndex];
   const blogSeo = calculateBlogSeo(blogPostForm);
+  const blogImportPosts = blogImportPreview?.posts ?? [];
+  const selectedBlogImportPosts = blogImportPosts.filter((post) => selectedBlogImportIds.has(post.id));
+  const blogImportMissingImageCount = blogImportPreview?.imageFailures.length ?? 0;
+  const openQuoteRequestCount = quoteRequests.filter((request) => request.status !== 'closed').length;
+  const openServiceRequestCount = serviceRequests.filter((request) => request.status !== 'closed').length;
 
   const getAdminCategoryTitle = (categoryKey: string) =>
     adminCategories.find((category) => category.key === categoryKey)?.title ?? categoryKey;
@@ -1146,6 +1308,56 @@ function App() {
     return hoveredCategoryGalleryIndex === index ? 2 : 0.5;
   };
 
+  const showNextLatestBlogPost = () => {
+    if (latestBlogPosts.length === 0) {
+      return;
+    }
+
+    setActiveLatestBlogIndex((currentIndex) => (currentIndex + 1) % latestBlogPosts.length);
+  };
+
+  const showPreviousLatestBlogPost = () => {
+    if (latestBlogPosts.length === 0) {
+      return;
+    }
+
+    setActiveLatestBlogIndex((currentIndex) => (currentIndex - 1 + latestBlogPosts.length) % latestBlogPosts.length);
+  };
+
+  const getLatestBlogImageStyle = (index: number): CSSProperties => {
+    if (latestBlogPosts.length <= 1) {
+      return { opacity: 1, transform: 'translateX(-50%) translateY(0) scale(1)', zIndex: 3 };
+    }
+
+    const isActive = index === normalizedLatestBlogIndex;
+    const isPrevious = index === (normalizedLatestBlogIndex - 1 + latestBlogPosts.length) % latestBlogPosts.length;
+    const isNext = index === (normalizedLatestBlogIndex + 1) % latestBlogPosts.length;
+
+    if (isActive) {
+      return { opacity: 1, pointerEvents: 'auto', transform: 'translateX(-50%) translateY(0) scale(1)', zIndex: 3 };
+    }
+
+    if (isPrevious) {
+      return {
+        opacity: 0.92,
+        pointerEvents: 'auto',
+        transform: 'translateX(calc(-50% - clamp(54px, 13vw, 104px))) translateY(-56px) scale(0.78) rotateY(16deg)',
+        zIndex: 2,
+      };
+    }
+
+    if (isNext) {
+      return {
+        opacity: 0.92,
+        pointerEvents: 'auto',
+        transform: 'translateX(calc(-50% + clamp(54px, 13vw, 104px))) translateY(-56px) scale(0.78) rotateY(-16deg)',
+        zIndex: 2,
+      };
+    }
+
+    return { opacity: 0, pointerEvents: 'none', transform: 'translateX(-50%) translateY(24px) scale(0.66)', zIndex: 1 };
+  };
+
   const closePendingImageCrop = () => {
     setPendingImageCrop((currentCrop) => {
       if (currentCrop) {
@@ -1176,6 +1388,60 @@ function App() {
       }
     });
   }, [pendingImageCrop]);
+
+  useEffect(() => {
+    if (latestBlogPosts.length <= 1) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setActiveLatestBlogIndex((currentIndex) => (currentIndex + 1) % latestBlogPosts.length);
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [latestBlogPosts.length]);
+
+  useEffect(() => {
+    if (!isBlogIndexPage) {
+      return undefined;
+    }
+
+    const shouldLoadMore = () => {
+      if (!hasMoreBlogPostsRef.current || isLoadingMoreBlogPostsRef.current) {
+        return;
+      }
+
+      const markerTop = blogLoadMoreRef.current?.getBoundingClientRect().top ?? document.documentElement.scrollHeight;
+
+      if (markerTop <= window.innerHeight + 420) {
+        void loadMoreBlogPosts();
+      }
+    };
+
+    const marker = blogLoadMoreRef.current;
+    const observer =
+      marker && 'IntersectionObserver' in window
+        ? new IntersectionObserver(
+            (entries) => {
+              if (entries.some((entry) => entry.isIntersecting)) {
+                void loadMoreBlogPosts();
+              }
+            },
+            { rootMargin: '420px 0px' },
+          )
+        : null;
+
+    observer?.observe(marker as Element);
+    window.addEventListener('scroll', shouldLoadMore, { passive: true });
+    window.addEventListener('resize', shouldLoadMore);
+    shouldLoadMore();
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('scroll', shouldLoadMore);
+      window.removeEventListener('resize', shouldLoadMore);
+    };
+  }, [blogPosts.length, hasMoreBlogPosts, isBlogIndexPage, loadMoreBlogPosts]);
 
   useEffect(() => {
     if (!isPanelPage) {
@@ -1222,7 +1488,19 @@ function App() {
       }
 
       try {
-        const [productsResult, categoriesResult, socialLinksResult, contactSettingsResult, quoteQuestionsResult, blogPostsResult, blogCategoriesResult, blogTagsResult] =
+        const [
+          productsResult,
+          categoriesResult,
+          socialLinksResult,
+          contactSettingsResult,
+          quoteQuestionsResult,
+          pushoverSettingsResult,
+          quoteRequestsResult,
+          serviceRequestsResult,
+          blogPostsResult,
+          blogCategoriesResult,
+          blogTagsResult,
+        ] =
           await Promise.all([
             readApiJson<{ products?: AdminProduct[] }>(fetch(apiUrl('/api/products'))),
             readApiJson<{ categories?: AdminCategory[] }>(fetch(apiUrl('/api/product-categories'))),
@@ -1233,10 +1511,25 @@ function App() {
                 ? authorizedFetch('/api/quote-questions?includeInactive=1')
                 : fetch(apiUrl('/api/quote-questions')),
             ),
+            readApiJson<{ settings?: PushoverSettings }>(
+              isPanelPage && adminUser?.modules.includes('settings')
+                ? authorizedFetch('/api/pushover-settings')
+                : Promise.resolve(new Response('{}', { status: 200 })),
+            ),
+            readApiJson<{ requests?: QuoteRequest[] }>(
+              isPanelPage && adminUser?.modules.includes('settings')
+                ? authorizedFetch('/api/quote-requests')
+                : Promise.resolve(new Response('{}', { status: 200 })),
+            ),
+            readApiJson<{ requests?: ServiceRequest[] }>(
+              isPanelPage && adminUser?.modules.includes('settings')
+                ? authorizedFetch('/api/service-requests')
+                : Promise.resolve(new Response('{}', { status: 200 })),
+            ),
             readApiJson<{ posts?: BlogPost[] }>(
               isPanelPage && adminUser?.modules.includes('blog')
                 ? authorizedFetch('/api/blog-posts?includeDrafts=1')
-                : fetch(apiUrl('/api/blog-posts?limit=3')),
+                : fetch(apiUrl(`/api/blog-posts?limit=${isBlogIndexPage ? blogIndexPageSize : 5}`)),
             ),
             readApiJson<{ categories?: BlogTaxonomyItem[] }>(fetch(apiUrl('/api/blog-categories'))),
             readApiJson<{ tags?: BlogTaxonomyItem[] }>(fetch(apiUrl('/api/blog-tags'))),
@@ -1246,6 +1539,9 @@ function App() {
         const socialLinksData = socialLinksResult.data ?? {};
         const contactSettingsData = contactSettingsResult.data ?? {};
         const quoteQuestionsData = quoteQuestionsResult.data ?? {};
+        const pushoverSettingsData = pushoverSettingsResult.data ?? {};
+        const quoteRequestsData = quoteRequestsResult.data ?? {};
+        const serviceRequestsData = serviceRequestsResult.data ?? {};
         const blogPostsData = blogPostsResult.data ?? {};
         const blogCategoriesData = blogCategoriesResult.data ?? {};
         const blogTagsData = blogTagsResult.data ?? {};
@@ -1274,8 +1570,26 @@ function App() {
           setQuoteQuestions(quoteQuestionsData.questions);
         }
 
+        if (pushoverSettingsData.settings) {
+          setPushoverSettings(pushoverSettingsData.settings);
+          setPushoverSettingsForm({ ...pushoverSettingsData.settings, apiToken: '' });
+        }
+
+        if (quoteRequestsData.requests) {
+          setQuoteRequests(quoteRequestsData.requests);
+        }
+
+        if (serviceRequestsData.requests) {
+          setServiceRequests(serviceRequestsData.requests);
+        }
+
         if (blogPostsData.posts) {
           setBlogPosts(blogPostsData.posts);
+
+          if (isBlogIndexPage) {
+            hasMoreBlogPostsRef.current = blogPostsData.posts.length === blogIndexPageSize;
+            setHasMoreBlogPosts(blogPostsData.posts.length === blogIndexPageSize);
+          }
         }
 
         if (blogCategoriesData.categories) {
@@ -1321,7 +1635,7 @@ function App() {
     };
 
     void loadCatalog();
-  }, [adminToken, authStatus, adminUser, authorizedFetch, blogSlug, isPanelPage]);
+  }, [adminToken, authStatus, adminUser, authorizedFetch, blogSlug, isBlogIndexPage, isPanelPage]);
 
   useEffect(() => {
     const closeModalWithEscape = (event: KeyboardEvent) => {
@@ -1399,6 +1713,7 @@ function App() {
       if (isProductModalOpen) {
         setIsProductModalOpen(false);
         setEditingProductKey(null);
+        setIsConfirmingProductDelete(false);
         return;
       }
 
@@ -1640,6 +1955,7 @@ function App() {
   const openNewProductModal = () => {
     setEditingProductKey(null);
     setProductForm(createEmptyProductForm());
+    setIsConfirmingProductDelete(false);
     setIsProductModalOpen(true);
     setAdminMessage('');
   };
@@ -1662,6 +1978,7 @@ function App() {
       alt: product.alt,
       badges: product.badges.join(', '),
     });
+    setIsConfirmingProductDelete(false);
     setIsProductModalOpen(true);
     setAdminMessage('');
   };
@@ -1669,6 +1986,7 @@ function App() {
   const closeProductModal = () => {
     setIsProductModalOpen(false);
     setEditingProductKey(null);
+    setIsConfirmingProductDelete(false);
   };
 
   const updateProductForm = (field: keyof ProductFormState, value: string) => {
@@ -2010,8 +2328,143 @@ function App() {
     }
   };
 
+  const loadServiceRequests = async () => {
+    if (!canAccessModule('settings')) {
+      return;
+    }
+
+    setIsLoadingServiceRequests(true);
+
+    try {
+      const response = await authorizedFetch('/api/service-requests');
+      const data = (await response.json().catch(() => null)) as { requests?: ServiceRequest[] } | null;
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (response.status === 403) {
+        setAdminMessage('Servis taleplerine erişim yetkiniz yok.');
+        return;
+      }
+
+      if (!response.ok || !data?.requests) {
+        setAdminMessage('Servis talepleri yüklenemedi.');
+        return;
+      }
+
+      setServiceRequests(data.requests);
+    } catch {
+      setAdminMessage('Servis talepleri yüklenemedi. API bağlantısını kontrol edin.');
+    } finally {
+      setIsLoadingServiceRequests(false);
+    }
+  };
+
+  const closeQuoteRequest = async (requestId: string) => {
+    setClosingRequestId(requestId);
+
+    try {
+      const response = await authorizedFetch(`/api/quote-requests/${encodeURIComponent(requestId)}`, {
+        method: 'PATCH',
+      });
+      const data = (await response.json().catch(() => null)) as { requests?: QuoteRequest[] } | null;
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (!response.ok || !data?.requests) {
+        setAdminMessage('Teklif talebi kapatılamadı.');
+        return;
+      }
+
+      setQuoteRequests(data.requests);
+      setAdminMessage('Teklif talebi kapatıldı.');
+    } catch {
+      setAdminMessage('Teklif talebi kapatılamadı. API bağlantısını kontrol edin.');
+    } finally {
+      setClosingRequestId('');
+    }
+  };
+
+  const closeServiceRequest = async (requestId: string) => {
+    setClosingRequestId(requestId);
+
+    try {
+      const response = await authorizedFetch(`/api/service-requests/${encodeURIComponent(requestId)}`, {
+        method: 'PATCH',
+      });
+      const data = (await response.json().catch(() => null)) as { requests?: ServiceRequest[] } | null;
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (!response.ok || !data?.requests) {
+        setAdminMessage('Servis talebi kapatılamadı.');
+        return;
+      }
+
+      setServiceRequests(data.requests);
+      setAdminMessage('Servis talebi kapatıldı.');
+    } catch {
+      setAdminMessage('Servis talebi kapatılamadı. API bağlantısını kontrol edin.');
+    } finally {
+      setClosingRequestId('');
+    }
+  };
+
+  const sendPushoverTestNotification = async () => {
+    if (!canAccessModule('settings')) {
+      return;
+    }
+
+    setIsSendingPushoverTest(true);
+    setAdminMessage('');
+
+    try {
+      const response = await authorizedFetch('/api/quote-requests/test-pushover', {
+        method: 'POST',
+      });
+      const data = (await response.json().catch(() => null)) as { ok?: boolean; pushoverSent?: boolean; error?: string } | null;
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (response.status === 403) {
+        setAdminMessage('Pushover deneme bildirimi için yetkiniz yok.');
+        return;
+      }
+
+      if (!response.ok || !data?.ok || !data.pushoverSent) {
+        setAdminMessage(
+          data?.error === 'pushover_not_configured'
+            ? 'Pushover ayarları eksik. Ayarlar > Pushover bölümünden API bilgilerini veya yedek e-posta adresini kaydedin.'
+            : 'Pushover deneme bildirimi gönderilemedi.',
+        );
+        return;
+      }
+
+      setAdminMessage('Pushover deneme bildirimi gönderildi.');
+    } catch {
+      setAdminMessage('Pushover deneme bildirimi gönderilemedi. API bağlantısını kontrol edin.');
+    } finally {
+      setIsSendingPushoverTest(false);
+    }
+  };
+
   const reloadAdminCatalog = async () => {
-    const [productsResult, categoriesResult, socialLinksResult, contactSettingsResult, quoteQuestionsResult, blogPostsResult, blogCategoriesResult, blogTagsResult] =
+    const [productsResult, categoriesResult, socialLinksResult, contactSettingsResult, quoteQuestionsResult, pushoverSettingsResult, blogPostsResult, blogCategoriesResult, blogTagsResult] =
       await Promise.all([
         readApiJson<{ products?: AdminProduct[] }>(fetch(apiUrl('/api/products'))),
         readApiJson<{ categories?: AdminCategory[] }>(fetch(apiUrl('/api/product-categories'))),
@@ -2019,6 +2472,11 @@ function App() {
         readApiJson<{ settings?: ContactSettings }>(fetch(apiUrl('/api/contact-settings'))),
         readApiJson<{ questions?: QuoteQuestion[] }>(
           canAccessModule('settings') ? authorizedFetch('/api/quote-questions?includeInactive=1') : fetch(apiUrl('/api/quote-questions')),
+        ),
+        readApiJson<{ settings?: PushoverSettings }>(
+          canAccessModule('settings')
+            ? authorizedFetch('/api/pushover-settings')
+            : Promise.resolve(new Response('{}', { status: 200 })),
         ),
         readApiJson<{ posts?: BlogPost[] }>(
           canAccessModule('blog') ? authorizedFetch('/api/blog-posts?includeDrafts=1') : fetch(apiUrl('/api/blog-posts?limit=3')),
@@ -2031,6 +2489,7 @@ function App() {
     const socialLinksData = socialLinksResult.data ?? {};
     const contactSettingsData = contactSettingsResult.data ?? {};
     const quoteQuestionsData = quoteQuestionsResult.data ?? {};
+    const pushoverSettingsData = pushoverSettingsResult.data ?? {};
     const blogPostsData = blogPostsResult.data ?? {};
     const blogCategoriesData = blogCategoriesResult.data ?? {};
     const blogTagsData = blogTagsResult.data ?? {};
@@ -2059,6 +2518,11 @@ function App() {
       setQuoteQuestions(quoteQuestionsData.questions);
     }
 
+    if (pushoverSettingsData.settings) {
+      setPushoverSettings(pushoverSettingsData.settings);
+      setPushoverSettingsForm({ ...pushoverSettingsData.settings, apiToken: '' });
+    }
+
     if (blogPostsData.posts) {
       setBlogPosts(blogPostsData.posts);
     }
@@ -2069,6 +2533,213 @@ function App() {
 
     if (blogTagsData.tags) {
       setBlogTags(blogTagsData.tags);
+    }
+  };
+
+  const loadBlogImportPreview = async () => {
+    setIsLoadingBlogImportPreview(true);
+
+    try {
+      const response = await fetch(`/wp-import-preview.json?ts=${Date.now()}`);
+      const data = (await response.json().catch(() => null)) as BlogImportPreview | null;
+
+      if (!response.ok || !data?.posts) {
+        setAdminMessage('Blog import önizleme paketi bulunamadı. Önce preview komutunu çalıştırın.');
+        return;
+      }
+
+      setBlogImportPreview(data);
+      setSelectedBlogImportIds(new Set(data.posts.map((post) => post.id)));
+      setAdminMessage(`${data.posts.length} blog yazısı önizlemeye yüklendi.`);
+    } catch {
+      setAdminMessage('Blog import önizlemesi yüklenemedi.');
+    } finally {
+      setIsLoadingBlogImportPreview(false);
+    }
+  };
+
+  const toggleBlogImportSelection = (postId: string) => {
+    setSelectedBlogImportIds((currentSelection) => {
+      const nextSelection = new Set(currentSelection);
+
+      if (nextSelection.has(postId)) {
+        nextSelection.delete(postId);
+      } else {
+        nextSelection.add(postId);
+      }
+
+      return nextSelection;
+    });
+  };
+
+  const setAllBlogImportSelection = (isSelected: boolean) => {
+    setSelectedBlogImportIds(new Set(isSelected ? blogImportPosts.map((post) => post.id) : []));
+  };
+
+  const uploadPreviewBlogImage = async (previewUrl: string, name: string) => {
+    if (!previewUrl) {
+      return '';
+    }
+
+    const imageResponse = await fetch(previewUrl);
+
+    if (!imageResponse.ok) {
+      throw new Error(`Önizleme görseli okunamadı: ${previewUrl}`);
+    }
+
+    const imageBlob = await imageResponse.blob();
+    const uploadResponse = await authorizedFetch(`/api/assets/blog-image?variant=import&folder=blog&name=${encodeURIComponent(name)}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'image/webp',
+      },
+      body: imageBlob,
+    });
+    const data = (await uploadResponse.json().catch(() => null)) as { url?: string } | null;
+
+    if (uploadResponse.status === 401) {
+      setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+      await logoutAdmin();
+      throw new Error('Unauthorized');
+    }
+
+    if (!uploadResponse.ok || !data?.url) {
+      throw new Error(`Görsel yüklenemedi: ${previewUrl}`);
+    }
+
+    return data.url.startsWith('/api/') ? apiUrl(data.url) : data.url;
+  };
+
+  const normalizeBlogImportPayload = (post: BlogImportPreviewPost) => {
+    const payload = { ...post.payload };
+    const taxonomyKeywords = [
+      ...post.categories.map((category) => category.title),
+      ...payload.tags,
+    ].filter(Boolean).join(', ');
+
+    payload.key = payload.key.trim() || `wpPost${post.id}`;
+    payload.title = payload.title.trim() || `WordPress Yazısı ${post.id}`;
+    payload.summary = payload.summary.trim() || post.preview.summaryText.trim() || payload.title;
+    payload.targetKeyword = payload.targetKeyword.trim() || payload.title.split(/\s+/).slice(0, 2).join(' ');
+    payload.content = payload.content.trim() || payload.summary;
+    payload.slug = payload.slug.trim() || payload.key;
+    payload.metaTitle = payload.metaTitle.trim() || payload.title;
+    payload.metaKeywords = payload.metaKeywords.trim() || taxonomyKeywords || payload.targetKeyword || payload.title;
+    payload.metaDescription = payload.metaDescription.trim() || payload.summary.slice(0, 155);
+
+    return payload;
+  };
+
+  const findExistingBlogImportPost = (payload: BlogImportPayload, existingPosts: BlogPost[]) =>
+    existingPosts.find(
+      (post) =>
+        post.key === payload.key ||
+        post.slug === payload.slug ||
+        (Boolean(payload.oldUrl) && post.oldUrl === payload.oldUrl),
+    );
+
+  const importSelectedBlogPreviewPosts = async () => {
+    if (selectedBlogImportPosts.length === 0) {
+      setAdminMessage('Aktarılacak blog yazısı seçilmedi.');
+      return;
+    }
+
+    setIsImportingBlogPreview(true);
+
+    try {
+      const existingPostsResponse = await authorizedFetch('/api/blog-posts?includeDrafts=1');
+      const existingPostsData = (await existingPostsResponse.json().catch(() => null)) as { posts?: BlogPost[] } | null;
+
+      if (existingPostsResponse.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (!existingPostsResponse.ok || !existingPostsData?.posts) {
+        throw new Error('Mevcut blog kayıtları kontrol edilemedi.');
+      }
+
+      const knownBlogPosts = [...existingPostsData.posts];
+
+      for (const previewPost of selectedBlogImportPosts) {
+        const payload = normalizeBlogImportPayload(previewPost);
+        const existingPost = findExistingBlogImportPost(payload, knownBlogPosts);
+
+        if (previewPost.preview.featuredImage.previewUrl) {
+          payload.image = await uploadPreviewBlogImage(previewPost.preview.featuredImage.previewUrl, `${payload.slug}-featured`);
+        }
+
+        for (const [index, contentImage] of previewPost.preview.contentImages.entries()) {
+          if (!contentImage.previewUrl) {
+            continue;
+          }
+
+          const uploadedUrl = await uploadPreviewBlogImage(contentImage.previewUrl, `${payload.slug}-content-${index + 1}`);
+          payload.content = payload.content.replaceAll(contentImage.sourceUrl, uploadedUrl);
+        }
+
+        for (const category of previewPost.categories) {
+          const categoryResponse = await authorizedFetch('/api/blog-categories', {
+            method: 'PUT',
+            headers: {
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({ ...category, sortOrder: category.sortOrder ?? 0 }),
+          });
+
+          if (categoryResponse.status === 401) {
+            setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+            await logoutAdmin();
+            return;
+          }
+
+          if (!categoryResponse.ok) {
+            throw new Error(`${category.title} kategorisi aktarılamadı.`);
+          }
+        }
+
+        const postResponse = await authorizedFetch(existingPost ? `/api/blog-posts/${encodeURIComponent(existingPost.key)}` : '/api/blog-posts', {
+          method: existingPost ? 'PUT' : 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (postResponse.status === 401) {
+          setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+          await logoutAdmin();
+          return;
+        }
+
+        if (!postResponse.ok) {
+          const errorData = (await postResponse.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(`${payload.title} yazısı aktarılamadı.${errorData?.error ? ` Hata: ${errorData.error}` : ''}`);
+        }
+
+        const postData = (await postResponse.json().catch(() => null)) as { post?: BlogPost } | null;
+
+        if (postData?.post) {
+          const existingIndex = knownBlogPosts.findIndex((post) => post.key === postData.post?.key);
+
+          if (existingIndex >= 0) {
+            knownBlogPosts[existingIndex] = postData.post;
+          } else {
+            knownBlogPosts.push(postData.post);
+          }
+        }
+
+        setImportedBlogImportIds((currentIds) => new Set(currentIds).add(previewPost.id));
+      }
+
+      setSelectedBlogImportIds(new Set());
+      await reloadAdminCatalog();
+      setAdminMessage(`${selectedBlogImportPosts.length} blog yazısı aktarıldı.`);
+    } catch (error) {
+      setAdminMessage(error instanceof Error ? error.message : 'Blog yazıları aktarılamadı.');
+    } finally {
+      setIsImportingBlogPreview(false);
     }
   };
 
@@ -2465,6 +3136,13 @@ function App() {
     }));
   };
 
+  const updatePushoverSettingsForm = (field: keyof PushoverSettings, value: string | boolean) => {
+    setPushoverSettingsForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }));
+  };
+
   const updateServiceRequestForm = (field: keyof ServiceRequestFormState, value: string) => {
     setServiceRequestForm((currentForm) => ({
       ...currentForm,
@@ -2693,6 +3371,46 @@ function App() {
       setAdminMessage('İletişim bilgileri kaydedilemedi. API bağlantısını kontrol edin.');
     } finally {
       setIsSavingContactSettings(false);
+    }
+  };
+
+  const savePushoverSettings = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSavingPushoverSettings(true);
+
+    try {
+      const response = await authorizedFetch('/api/pushover-settings', {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          userKey: pushoverSettingsForm.userKey.trim(),
+          apiToken: pushoverSettingsForm.apiToken.trim(),
+          emailAddress: pushoverSettingsForm.emailAddress.trim(),
+          isActive: pushoverSettingsForm.isActive,
+        }),
+      });
+      const data = (await response.json().catch(() => null)) as { settings?: PushoverSettings } | null;
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (!response.ok || !data?.settings) {
+        setAdminMessage('Pushover ayarları kaydedilemedi.');
+        return;
+      }
+
+      setPushoverSettings(data.settings);
+      setPushoverSettingsForm({ ...data.settings, apiToken: '' });
+      setAdminMessage('Pushover ayarları kaydedildi.');
+    } catch {
+      setAdminMessage('Pushover ayarları kaydedilemedi. API bağlantısını kontrol edin.');
+    } finally {
+      setIsSavingPushoverSettings(false);
     }
   };
 
@@ -3133,7 +3851,7 @@ function App() {
         },
         body: JSON.stringify(payload),
       });
-      const data = (await response.json().catch(() => null)) as { ok?: boolean; emailSent?: boolean } | null;
+      const data = (await response.json().catch(() => null)) as { ok?: boolean; emailSent?: boolean; pushoverSent?: boolean } | null;
 
       if (!response.ok || !data?.ok) {
         setServiceRequestMessage('Servis kaydı gönderilemedi. Lütfen bilgileri kontrol edip tekrar deneyin.');
@@ -3142,8 +3860,10 @@ function App() {
 
       setServiceRequestForm(emptyServiceRequestForm);
       setServiceRequestMessage(
-        data.emailSent
-          ? 'Servis kaydınız alındı. Ekibimize e-posta bildirimi gönderildi.'
+        data.pushoverSent
+          ? 'Servis kaydınız alındı. Ekibimize Pushover bildirimi gönderildi.'
+          : data.emailSent
+            ? 'Servis kaydınız alındı. Ekibimize e-posta bildirimi gönderildi.'
           : 'Servis kaydınız alındı. Ekibimiz en kısa sürede sizinle iletişime geçecek.',
       );
       setTimeout(() => setIsServiceRequestModalOpen(false), 1400);
@@ -3300,6 +4020,36 @@ function App() {
     await reloadAdminCatalog();
 
     setAdminMessage(editingProductKey ? 'Ürün güncellendi.' : 'Yeni ürün eklendi.');
+    closeProductModal();
+  };
+
+  const deleteProduct = async () => {
+    if (!editingProductKey) {
+      return;
+    }
+
+    if (!isConfirmingProductDelete) {
+      setIsConfirmingProductDelete(true);
+      return;
+    }
+
+    const response = await authorizedFetch(`/api/products/${encodeURIComponent(editingProductKey)}`, {
+      method: 'DELETE',
+    });
+
+    if (response.status === 401) {
+      setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+      await logoutAdmin();
+      return;
+    }
+
+    if (!response.ok) {
+      setAdminMessage('Ürün silinemedi.');
+      return;
+    }
+
+    await reloadAdminCatalog();
+    setAdminMessage('Ürün silindi.');
     closeProductModal();
   };
 
@@ -3495,6 +4245,22 @@ function App() {
                 <span>Blog</span>
               </button>
             )}
+            {canAccessModule('blog') && (
+              <button
+                className={`adminNavItem${activeAdminSection === 'blogImport' ? ' active' : ''}`}
+                type="button"
+                onClick={() => {
+                  setAdminSection('blogImport');
+
+                  if (!blogImportPreview) {
+                    void loadBlogImportPreview();
+                  }
+                }}
+              >
+                <Upload size={20} strokeWidth={2.2} />
+                <span>Blog Import</span>
+              </button>
+            )}
             {canAccessModule('products') && (
               <button
                 className={`adminNavItem${activeAdminSection === 'assets' ? ' active' : ''}`}
@@ -3532,6 +4298,24 @@ function App() {
               >
                 <Mail size={20} strokeWidth={2.2} />
                 <span>Teklif Talepleri</span>
+                {openQuoteRequestCount > 0 && <strong className="adminNavBadge">{openQuoteRequestCount}</strong>}
+              </button>
+            )}
+            {canAccessModule('settings') && (
+              <button
+                className={`adminNavItem${activeAdminSection === 'serviceRequests' ? ' active' : ''}`}
+                type="button"
+                onClick={() => {
+                  setAdminSection('serviceRequests');
+
+                  if (serviceRequests.length === 0) {
+                    void loadServiceRequests();
+                  }
+                }}
+              >
+                <Settings size={20} strokeWidth={2.2} />
+                <span>Servis Talepleri</span>
+                {openServiceRequestCount > 0 && <strong className="adminNavBadge">{openServiceRequestCount}</strong>}
               </button>
             )}
             {canAccessModule('users') && (
@@ -3599,15 +4383,19 @@ function App() {
                   ? 'Ürünler'
                   : activeAdminSection === 'blog'
                     ? 'Blog'
-                    : activeAdminSection === 'assets'
-                      ? 'Görsel Yönetimi'
-                      : activeAdminSection === 'quoteQuestions'
-                        ? 'Teklif Soruları'
-                        : activeAdminSection === 'quoteRequests'
-                          ? 'Teklif Talepleri'
-                          : activeAdminSection === 'users'
-                            ? 'Kullanıcılar'
-                            : 'Veritabanı'}
+                    : activeAdminSection === 'blogImport'
+                      ? 'Blog Import'
+                      : activeAdminSection === 'assets'
+                        ? 'Görsel Yönetimi'
+                        : activeAdminSection === 'quoteQuestions'
+                          ? 'Teklif Soruları'
+                          : activeAdminSection === 'quoteRequests'
+                            ? 'Teklif Talepleri'
+                            : activeAdminSection === 'serviceRequests'
+                              ? 'Servis Talepleri'
+                              : activeAdminSection === 'users'
+                                ? 'Kullanıcılar'
+                                : 'Veritabanı'}
               </h1>
             </div>
             {activeAdminSection === 'products' ? (
@@ -3623,6 +4411,15 @@ function App() {
               <div className="adminTopbarActions">
                 <button type="button" onClick={openNewBlogModal}>
                   Yeni Blog Yazısı
+                </button>
+              </div>
+            ) : activeAdminSection === 'blogImport' ? (
+              <div className="adminTopbarActions">
+                <button type="button" onClick={loadBlogImportPreview} disabled={isLoadingBlogImportPreview || isImportingBlogPreview}>
+                  {isLoadingBlogImportPreview ? 'Yükleniyor...' : 'Önizlemeyi Yenile'}
+                </button>
+                <button type="button" onClick={importSelectedBlogPreviewPosts} disabled={isImportingBlogPreview || selectedBlogImportPosts.length === 0}>
+                  {isImportingBlogPreview ? 'Aktarılıyor...' : `Seçili Yazıları Aktar (${selectedBlogImportPosts.length})`}
                 </button>
               </div>
             ) : activeAdminSection === 'users' ? (
@@ -3653,8 +4450,17 @@ function App() {
               </div>
             ) : activeAdminSection === 'quoteRequests' ? (
               <div className="adminTopbarActions">
+                <button type="button" onClick={sendPushoverTestNotification} disabled={isSendingPushoverTest}>
+                  {isSendingPushoverTest ? 'Gönderiliyor...' : 'Deneme Bildirimi'}
+                </button>
                 <button type="button" onClick={loadQuoteRequests} disabled={isLoadingQuoteRequests}>
                   {isLoadingQuoteRequests ? 'Yükleniyor...' : 'Yenile'}
+                </button>
+              </div>
+            ) : activeAdminSection === 'serviceRequests' ? (
+              <div className="adminTopbarActions">
+                <button type="button" onClick={loadServiceRequests} disabled={isLoadingServiceRequests}>
+                  {isLoadingServiceRequests ? 'Yükleniyor...' : 'Yenile'}
                 </button>
               </div>
             ) : null}
@@ -3691,12 +4497,36 @@ function App() {
                 </article>
                 <article>
                   <span>Durum</span>
-                  <strong>Hazır</strong>
+                  <strong>{adminProductCategoryFilter ? `${visibleAdminProducts.length} Ürün` : 'Hazır'}</strong>
                 </article>
               </div>
 
+              <div className="adminProductFilters">
+                <label>
+                  Kategori
+                  <select
+                    value={adminProductCategoryFilter}
+                    onChange={(event) => setAdminProductCategoryFilter(event.target.value)}
+                  >
+                    <option value="">Tüm kategoriler</option>
+                    {adminCategories.map((category) => (
+                      <option key={category.key} value={category.key}>
+                        {category.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {adminProductCategoryFilter && (
+                  <button type="button" onClick={() => setAdminProductCategoryFilter('')}>
+                    Filtreyi Temizle
+                  </button>
+                )}
+              </div>
+
               <div className="adminProducts">
-                {adminProducts.map((product) => (
+                {visibleAdminProducts.length === 0 ? (
+                  <p className="adminProductEmpty">Bu kategoride ürün bulunamadı.</p>
+                ) : visibleAdminProducts.map((product) => (
                   <button
                     className="adminProductCard"
                     key={product.key}
@@ -3749,6 +4579,125 @@ function App() {
                   </button>
                 ))}
               </div>
+            </>
+          ) : activeAdminSection === 'blogImport' ? (
+            <>
+              <div className="adminStats">
+                <article>
+                  <span>Önizleme Yazısı</span>
+                  <strong>{blogImportPosts.length}</strong>
+                </article>
+                <article>
+                  <span>Seçili</span>
+                  <strong>{selectedBlogImportIds.size}</strong>
+                </article>
+                <article>
+                  <span>Eksik Görsel</span>
+                  <strong>{blogImportMissingImageCount}</strong>
+                </article>
+              </div>
+
+              <section className="adminPanelForm adminBlogImportPanel">
+                <div className="adminBlogImportToolbar">
+                  <div>
+                    <strong>SQL önizleme paketi</strong>
+                    <span>
+                      {blogImportPreview
+                        ? `${blogImportPreview.source.detectedPrefixes.join(', ') || 'wp_'} / ${blogImportPreview.totals.availableImagesByName} yerel görsel`
+                        : 'Önce preview komutunu çalıştırıp paketi yükleyin.'}
+                    </span>
+                  </div>
+                  <div>
+                    <button type="button" onClick={() => setAllBlogImportSelection(true)} disabled={blogImportPosts.length === 0 || isImportingBlogPreview}>
+                      Tümünü Seç
+                    </button>
+                    <button type="button" onClick={() => setAllBlogImportSelection(false)} disabled={selectedBlogImportIds.size === 0 || isImportingBlogPreview}>
+                      Seçimi Temizle
+                    </button>
+                  </div>
+                </div>
+
+                {!blogImportPreview ? (
+                  <div className="adminQuoteQuestionEmpty">
+                    <strong>Önizleme paketi yüklenmedi.</strong>
+                    <span>`npm run import:wp-blog-dump -- --preview ...` komutunu çalıştırdıktan sonra önizlemeyi yenileyin.</span>
+                  </div>
+                ) : (
+                  <div className="adminBlogImportList">
+                    {blogImportPosts.map((post) => {
+                      const isSelected = selectedBlogImportIds.has(post.id);
+                      const isImported = importedBlogImportIds.has(post.id);
+                      const hasMissingImage =
+                        Boolean(post.preview.featuredImage.sourceUrl && !post.preview.featuredImage.previewUrl) ||
+                        post.preview.imageFailures.length > 0;
+
+                      return (
+                        <article className={`adminBlogImportCard${isSelected ? ' selected' : ''}`} key={post.id}>
+                          <label className="adminBlogImportSelect">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={isImportingBlogPreview || isImported}
+                              onChange={() => toggleBlogImportSelection(post.id)}
+                            />
+                            <span>{isImported ? 'Aktarıldı' : 'Seç'}</span>
+                          </label>
+
+                          <button
+                            className="adminBlogImportImage"
+                            type="button"
+                            disabled={!post.preview.featuredImage.previewUrl}
+                            onClick={() =>
+                              post.preview.featuredImage.previewUrl
+                                ? setImagePreview({ title: post.payload.title, url: post.preview.featuredImage.previewUrl })
+                                : undefined
+                            }
+                          >
+                            {post.preview.featuredImage.previewUrl ? (
+                              <img src={post.preview.featuredImage.previewUrl} alt={post.payload.imageAlt || post.payload.title} />
+                            ) : (
+                              <span>Görsel yok</span>
+                            )}
+                          </button>
+
+                          <div className="adminBlogImportBody">
+                            <div className="adminBlogImportHeader">
+                              <div>
+                                <span>
+                                  SEO %{post.payload.seoScore} / {post.payload.status === 'published' ? 'Yayında' : 'Taslak'}
+                                </span>
+                                <h2>{post.payload.title}</h2>
+                                <p>{post.payload.summary}</p>
+                              </div>
+                              {hasMissingImage && <strong className="adminBlogImportWarning">Eksik görsel</strong>}
+                            </div>
+
+                            <dl className="adminBlogImportMeta">
+                              <div>
+                                <dt>Slug</dt>
+                                <dd>{post.payload.slug}</dd>
+                              </div>
+                              <div>
+                                <dt>Kategori</dt>
+                                <dd>{post.categories.map((category) => category.title).join(', ') || '-'}</dd>
+                              </div>
+                              <div>
+                                <dt>İçerik Görseli</dt>
+                                <dd>{post.preview.contentImages.length}</dd>
+                              </div>
+                            </dl>
+
+                            <details className="adminBlogImportPreview">
+                              <summary>İçerik önizleme</summary>
+                              <div dangerouslySetInnerHTML={{ __html: post.preview.content || post.payload.content }} />
+                            </details>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
             </>
           ) : activeAdminSection === 'assets' ? (
             <>
@@ -3977,7 +4926,18 @@ function App() {
                               {formatAdminDateTime(request.createdAt)}
                             </p>
                           </div>
-                          <span className="adminQuoteRequestStatus">{request.status}</span>
+                          <div className="adminQuoteRequestStatusGroup">
+                            <span className="adminQuoteRequestStatus">{request.status === 'closed' ? 'Kapalı' : 'Açık'}</span>
+                            {request.status !== 'closed' && (
+                              <button
+                                type="button"
+                                onClick={() => closeQuoteRequest(request.id)}
+                                disabled={closingRequestId === request.id}
+                              >
+                                {closingRequestId === request.id ? 'Kapatılıyor...' : 'Kapat'}
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         <dl className="adminQuoteRequestContact">
@@ -4010,6 +4970,82 @@ function App() {
                           <summary>WhatsApp mesajı</summary>
                           <pre>{request.whatsappMessage}</pre>
                         </details>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </>
+          ) : activeAdminSection === 'serviceRequests' ? (
+            <>
+              <div className="adminStats">
+                <article>
+                  <span>Toplam Servis Talebi</span>
+                  <strong>{serviceRequests.length}</strong>
+                </article>
+                <article>
+                  <span>Açık Talep</span>
+                  <strong>{openServiceRequestCount}</strong>
+                </article>
+                <article>
+                  <span>Son Talep</span>
+                  <strong>{serviceRequests[0] ? formatAdminDateTime(serviceRequests[0].createdAt) : '-'}</strong>
+                </article>
+              </div>
+
+              <section className="adminPanelForm adminQuoteRequestPanel">
+                {serviceRequests.length === 0 ? (
+                  <div className="adminQuoteQuestionEmpty">
+                    <strong>Servis talebi bulunamadı.</strong>
+                    <span>Servis Kaydı formundan gönderilen talepler burada listelenecek.</span>
+                  </div>
+                ) : (
+                  <div className="adminQuoteRequestList">
+                    {serviceRequests.map((request) => (
+                      <article className="adminQuoteRequestCard" key={request.id}>
+                        <div className="adminQuoteRequestHeader">
+                          <div>
+                            <span>{request.requestType}</span>
+                            <h3>{request.productTitle || getAdminProductTitle(request.productKey) || 'Ürün seçilmedi'}</h3>
+                            <p>{formatAdminDateTime(request.createdAt)}</p>
+                          </div>
+                          <div className="adminQuoteRequestStatusGroup">
+                            <span className="adminQuoteRequestStatus">{request.status === 'closed' ? 'Kapalı' : 'Açık'}</span>
+                            {request.status !== 'closed' && (
+                              <button
+                                type="button"
+                                onClick={() => closeServiceRequest(request.id)}
+                                disabled={closingRequestId === request.id}
+                              >
+                                {closingRequestId === request.id ? 'Kapatılıyor...' : 'Kapat'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <dl className="adminQuoteRequestContact">
+                          <div>
+                            <dt>Ad Soyad</dt>
+                            <dd>{request.fullName || '-'}</dd>
+                          </div>
+                          <div>
+                            <dt>Telefon</dt>
+                            <dd>{request.phone || '-'}</dd>
+                          </div>
+                          <div>
+                            <dt>Bildirim</dt>
+                            <dd>
+                              {request.pushoverSent ? 'Pushover' : request.emailSent ? 'E-posta' : '-'}
+                            </dd>
+                          </div>
+                        </dl>
+
+                        {request.description && (
+                          <details className="adminQuoteRequestMessage" open>
+                            <summary>Açıklama</summary>
+                            <pre>{request.description}</pre>
+                          </details>
+                        )}
                       </article>
                     ))}
                   </div>
@@ -4432,7 +5468,9 @@ function App() {
                         ? 'Footer'
                         : activeSettingsTab === 'contact'
                           ? 'İletişim Bilgileri'
-                          : 'WordPress MySQL Kaynağı'}
+                          : activeSettingsTab === 'wordpress'
+                            ? 'WordPress MySQL Kaynağı'
+                            : 'Pushover Bildirimleri'}
                     </h2>
                   </div>
                   <button type="button" aria-label="Modalı kapat" onClick={closeSettingsModal}>
@@ -4462,6 +5500,13 @@ function App() {
                       onClick={() => setActiveSettingsTab('wordpress')}
                     >
                       WordPress MySQL
+                    </button>
+                    <button
+                      className={activeSettingsTab === 'pushover' ? 'active' : ''}
+                      type="button"
+                      onClick={() => setActiveSettingsTab('pushover')}
+                    >
+                      Pushover
                     </button>
                   </aside>
 
@@ -4528,7 +5573,7 @@ function App() {
                         </button>
                       </div>
                     </form>
-                  ) : (
+                  ) : activeSettingsTab === 'wordpress' ? (
                     <form className="adminProductForm adminFooterForm" onSubmit={saveWpSourceSettings}>
                       {wpSourceFields.map((field) => (
                         <label
@@ -4593,6 +5638,63 @@ function App() {
                         </button>
                         <button type="submit" disabled={isSavingWpSourceSettings}>
                           {isSavingWpSourceSettings ? 'Kaydediliyor...' : 'Kaydet'}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <form className="adminProductForm adminFooterForm" onSubmit={savePushoverSettings}>
+                      <label className="adminToggleRow adminFormWide">
+                        <span>
+                          Pushover bildirimleri aktif
+                          <small>Teklif talebi ve servis kaydı oluşturulduğunda Pushover bildirimi gönderir.</small>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={pushoverSettingsForm.isActive}
+                          onChange={(event) => updatePushoverSettingsForm('isActive', event.target.checked)}
+                        />
+                      </label>
+
+                      <label className="adminFormWide">
+                        User Key
+                        <input
+                          value={pushoverSettingsForm.userKey}
+                          onChange={(event) => updatePushoverSettingsForm('userKey', event.target.value)}
+                          placeholder="u5yr5d91r8ojvk2uwu3kps4q2q34e7"
+                        />
+                      </label>
+
+                      <label className="adminFormWide">
+                        API Token
+                        <input
+                          type="password"
+                          value={pushoverSettingsForm.apiToken}
+                          onChange={(event) => updatePushoverSettingsForm('apiToken', event.target.value)}
+                          placeholder={pushoverSettings.hasApiToken ? 'Kayıtlı token korunur' : 'Pushover application API token'}
+                        />
+                        {pushoverSettings.hasApiToken && !pushoverSettingsForm.apiToken && <small>API token kayıtlı.</small>}
+                      </label>
+
+                      <label className="adminFormWide">
+                        Yedek E-posta Gateway
+                        <input
+                          type="email"
+                          value={pushoverSettingsForm.emailAddress}
+                          onChange={(event) => updatePushoverSettingsForm('emailAddress', event.target.value)}
+                          placeholder="g76fqg9ggn@pomail.net"
+                        />
+                        <small>API token eksikse veya API gönderimi başarısız olursa bu adrese e-posta gönderilir.</small>
+                      </label>
+
+                      <div className="adminFormActions">
+                        <button type="button" onClick={closeSettingsModal}>
+                          Vazgeç
+                        </button>
+                        <button type="button" onClick={sendPushoverTestNotification} disabled={isSendingPushoverTest}>
+                          {isSendingPushoverTest ? 'Gönderiliyor...' : 'Deneme Bildirimi'}
+                        </button>
+                        <button type="submit" disabled={isSavingPushoverSettings}>
+                          {isSavingPushoverSettings ? 'Kaydediliyor...' : 'Kaydet'}
                         </button>
                       </div>
                     </form>
@@ -5479,6 +6581,15 @@ function App() {
                   </label>
 
                   <div className="adminFormActions">
+                    {editingProductKey && (
+                      <button
+                        className={`dangerButton${isConfirmingProductDelete ? ' confirmDelete' : ''}`}
+                        type="button"
+                        onClick={deleteProduct}
+                      >
+                        {isConfirmingProductDelete ? 'Silme işlemini onayla' : 'Sil'}
+                      </button>
+                    )}
                     <button type="button" onClick={closeProductModal}>
                       Vazgeç
                     </button>
@@ -5497,7 +6608,7 @@ function App() {
     return (
       <main className="page blogDetailPage">
         <article className="blogDetail">
-          <a className="blogBackLink" href="/">Ana sayfaya dön</a>
+          <a className="blogBackLink" href="/blog">Tüm blog yazıları</a>
           {selectedBlogPost ? (
             <>
               {selectedBlogPost.image && <img src={selectedBlogPost.image} alt={selectedBlogPost.imageAlt || selectedBlogPost.title} />}
@@ -5505,10 +6616,9 @@ function App() {
               <h1>{selectedBlogPost.title}</h1>
               <p className="blogDetailSummary">{selectedBlogPost.summary}</p>
               <div className="blogDetailMeta">
-                <span>SEO %{selectedBlogPost.seoScore}</span>
                 {selectedBlogPost.publishedAt && <span>{selectedBlogPost.publishedAt}</span>}
               </div>
-              <div className="blogDetailContent">{selectedBlogPost.content}</div>
+              <div className="blogDetailContent" dangerouslySetInnerHTML={{ __html: selectedBlogPost.content }} />
             </>
           ) : (
             <>
@@ -5518,6 +6628,234 @@ function App() {
             </>
           )}
         </article>
+      </main>
+    );
+  }
+
+  if (isBlogIndexPage) {
+    return (
+      <main className="page blogIndexPage">
+        <header className="siteHeader">
+          <motion.a
+            className="logoLink"
+            href="/"
+            aria-label="HHS Otomatik Kapı ana sayfa"
+            initial={{
+              opacity: 0,
+              width: 8,
+              height: 8,
+              borderRadius: 999,
+              y: -8,
+            }}
+            animate={{
+              opacity: 1,
+              width: [8, 52, 92],
+              height: [8, 52, 52],
+              borderRadius: [999, 999, 6],
+              y: 0,
+            }}
+            transition={{
+              duration: 0.9,
+              ease: 'easeInOut',
+              times: [0, 0.48, 1],
+            }}
+          >
+            <motion.img
+              src="/apple-touch-icon.png"
+              alt="HHS Otomatik Kapı"
+              initial={{ opacity: 0, scale: 0.72 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.35, delay: 0.58, ease: 'easeOut' }}
+            />
+          </motion.a>
+
+          <div className="headerCenter">
+            <motion.a
+              className="headerQuoteButton"
+              href="/#iletisim"
+              initial={headerItemAnimation.initial}
+              animate={headerItemAnimation.animate}
+              transition={{ duration: 0.45, delay: 0.95, ease: 'easeOut' }}
+            >
+              Teklif Al
+            </motion.a>
+          </div>
+
+          <nav className="headerActions" aria-label="Üst menü">
+            <motion.button
+              className="iconButton"
+              type="button"
+              aria-label="Ara"
+              initial={headerItemAnimation.initial}
+              animate={headerItemAnimation.animate}
+              transition={{ duration: 0.45, delay: 0.95, ease: 'easeOut' }}
+            >
+              <Search size={22} strokeWidth={2.2} />
+            </motion.button>
+
+            <motion.div
+              className="languageButton"
+              initial={headerItemAnimation.initial}
+              animate={headerItemAnimation.animate}
+              transition={{ duration: 0.45, delay: 1.08, ease: 'easeOut' }}
+            >
+              <select
+                aria-label="Dil seçimi"
+                value={language}
+                onChange={(event) => setLanguage(event.target.value)}
+              >
+                {languages.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={18} strokeWidth={2.3} />
+            </motion.div>
+
+            <motion.button
+              className="iconButton"
+              type="button"
+              aria-label="Menüyü aç"
+              onClick={() => setIsHeaderMenuOpen((isOpen) => !isOpen)}
+              initial={headerItemAnimation.initial}
+              animate={headerItemAnimation.animate}
+              transition={{ duration: 0.45, delay: 1.21, ease: 'easeOut' }}
+            >
+              <Menu size={28} strokeWidth={2.2} />
+            </motion.button>
+          </nav>
+
+          <AnimatePresence>
+            {isHeaderMenuOpen && (
+              <motion.nav
+                className="headerMenuPanel"
+                aria-label="Ana menü"
+                initial={{ opacity: 0, y: -10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                transition={{ duration: 0.18 }}
+              >
+                <a href="/" onClick={() => setIsHeaderMenuOpen(false)}>Ana Sayfa</a>
+                <a href="/#hizmetler" onClick={() => setIsHeaderMenuOpen(false)}>Hizmetler</a>
+                <a href="/blog" onClick={() => setIsHeaderMenuOpen(false)}>Blog</a>
+                <a href="/#iletisim" onClick={() => setIsHeaderMenuOpen(false)}>İletişim</a>
+              </motion.nav>
+            )}
+          </AnimatePresence>
+        </header>
+
+        <section className="blogIndexHero">
+          <a className="blogBackLink" href="/">Ana sayfaya dön</a>
+          <h1>Güncel Yazılar</h1>
+          <p>Otomatik kapı, bariyer, garaj kapısı ve geçiş sistemleri hakkında güncel rehberler ve haberler.</p>
+        </section>
+
+        {publishedBlogPosts.length === 0 ? (
+          <section className="blogIndexEmpty">
+            <h2>Henüz yayında blog yazısı yok.</h2>
+            <p>Blog yazıları aktarıldığında bu sayfada listelenecek.</p>
+          </section>
+        ) : (
+          <>
+            <section className="latestBlogGrid blogIndexGrid" aria-label="Blog yazıları">
+              {publishedBlogPosts.map((post) => (
+                <a className="latestBlogCard" href={`/blog/${post.slug}`} key={post.key}>
+                  {post.image && <img src={post.image} alt={post.imageAlt || post.title} />}
+                  <div>
+                    <span>{post.categories[0]?.title ?? 'Blog'}</span>
+                    <h3>{post.title}</h3>
+                    <p>{post.summary}</p>
+                  </div>
+                </a>
+              ))}
+            </section>
+
+            <div className="blogLoadMoreMarker" ref={blogLoadMoreRef} aria-live="polite">
+              {hasMoreBlogPosts
+                ? isLoadingMoreBlogPosts
+                  ? 'Yazılar yükleniyor...'
+                  : 'Aşağı kaydırdıkça daha fazla yazı yüklenecek'
+                : 'Tüm yazılar yüklendi'}
+            </div>
+          </>
+        )}
+
+        <footer className="siteFooter">
+          <div className="footerBrand">
+            <a className="footerLogo" href="/" aria-label="HHS Otomatik Kapı ana sayfa">
+              <img src="/apple-touch-icon.png" alt="HHS Otomatik Kapı" />
+            </a>
+            <p>{contactSettings.footerDescription}</p>
+          </div>
+
+          <div className="footerColumn">
+            <h2>İletişim</h2>
+            <a className="footerContactLink" href={phonePrimaryHref}>
+              <span>
+                <Phone size={15} strokeWidth={2.4} />
+              </span>
+              {contactSettings.phonePrimary}
+            </a>
+            {contactSettings.phoneSecondary && (
+              <a className="footerContactLink" href={phoneSecondaryHref}>
+                <span>
+                  <Phone size={15} strokeWidth={2.4} />
+                </span>
+                {contactSettings.phoneSecondary}
+              </a>
+            )}
+            <a className="footerContactLink" href={whatsappHref} target="_blank" rel="noopener noreferrer">
+              <span>
+                <img src="https://cdn.simpleicons.org/whatsapp/25d366" alt="" />
+              </span>
+              {contactSettings.whatsapp}
+            </a>
+            <a className="footerContactLink" href={emailHref}>
+              <span>
+                <Mail size={15} strokeWidth={2.4} />
+              </span>
+              {contactSettings.email}
+            </a>
+          </div>
+
+          <div className="footerColumn">
+            <h2>Sayfalar</h2>
+            <a href="/">Ana Sayfa</a>
+            <a href="/#hizmetler">Hizmetler</a>
+            <a href="/#referanslar">Referanslar</a>
+            <a href="/#iletisim">İletişim</a>
+          </div>
+
+          <div className="footerColumn">
+            <h2>Sosyal Medya</h2>
+            <div className="footerSocialLinks">
+              {socialPlatforms.map((platform) => {
+                const link = socialLinks.find((item) => item.platform === platform.platform);
+
+                if (link && !link.isActive) {
+                  return null;
+                }
+
+                return (
+                  <a href={link?.url || platform.defaultUrl} key={platform.platform} target="_blank" rel="noreferrer">
+                    <span>
+                      <img src={platform.iconUrl} alt="" />
+                    </span>
+                    {link?.label ?? platform.label}
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="footerBottom">
+            <span>© 2026 HHS Otomatik Kapı. Tüm hakları saklıdır.</span>
+            <a href="/panel" target="_blank" rel="noreferrer">
+              Yönetim Paneli
+            </a>
+          </div>
+        </footer>
       </main>
     );
   }
@@ -5640,7 +6978,7 @@ function App() {
               >
                 <a href="/" onClick={() => setIsHeaderMenuOpen(false)}>Ana Sayfa</a>
                 <a href="#hizmetler" onClick={() => setIsHeaderMenuOpen(false)}>Hizmetler</a>
-                <a href="#blog" onClick={() => setIsHeaderMenuOpen(false)}>Blog</a>
+                <a href="/blog" onClick={() => setIsHeaderMenuOpen(false)}>Blog</a>
                 <a href="#iletisim" onClick={() => setIsHeaderMenuOpen(false)}>İletişim</a>
               </motion.nav>
             )}
@@ -6319,17 +7657,67 @@ function App() {
             <p className="eyebrow">Blog</p>
             <h2>Son Blog Yazıları</h2>
             <p>Otomatik kapı, bariyer ve geçiş sistemleri hakkında güncel içerikler.</p>
+            <a className="latestBlogAllLink" href="/blog">
+              Tüm blog yazıları
+            </a>
           </div>
-          <div className="latestBlogGrid">
-            {latestBlogPosts.map((post) => (
-              <a className="latestBlogCard" href={`/blog/${post.slug}`} key={post.key}>
-                {post.image && <img src={post.image} alt={post.imageAlt || post.title} />}
-                <div>
-                  <span>{post.categories[0]?.title ?? 'Blog'} / SEO %{post.seoScore}</span>
-                  <h3>{post.title}</h3>
-                  <p>{post.summary}</p>
+          <div className="latestBlogCarousel">
+            <div className="latestBlogImageStack" aria-hidden="true">
+              {latestBlogPosts.map((post, index) => (
+                post.image ? (
+                  <img
+                    alt=""
+                    className="latestBlogStackImage"
+                    key={post.key}
+                    src={post.image}
+                    style={getLatestBlogImageStyle(index)}
+                  />
+                ) : (
+                  <div
+                    className="latestBlogStackImage latestBlogStackFallback"
+                    key={post.key}
+                    style={getLatestBlogImageStyle(index)}
+                  />
+                )
+              ))}
+            </div>
+
+            {activeLatestBlogPost && (
+              <div className="latestBlogCarouselContent">
+                <div className="latestBlogText">
+                  <span>{activeLatestBlogPost.categories[0]?.title ?? 'Blog'}</span>
+                  <h3>{activeLatestBlogPost.title}</h3>
+                  <p>{activeLatestBlogPost.summary}</p>
                 </div>
-              </a>
+
+                <div className="latestBlogCarouselActions">
+                  <a className="latestBlogReadLink" href={`/blog/${activeLatestBlogPost.slug}`}>
+                    Yazıyı Oku
+                  </a>
+                  <div className="latestBlogArrows">
+                    <button type="button" onClick={showPreviousLatestBlogPost} aria-label="Önceki blog yazısı">
+                      <ChevronLeft size={24} strokeWidth={2.4} />
+                    </button>
+                    <button type="button" onClick={showNextLatestBlogPost} aria-label="Sonraki blog yazısı">
+                      <ChevronRight size={24} strokeWidth={2.4} />
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            )}
+          </div>
+          <div className="latestBlogMiniList" aria-label="Son blog yazıları">
+            {latestBlogPosts.map((post, index) => (
+              <button
+                className={index === normalizedLatestBlogIndex ? 'active' : ''}
+                key={post.key}
+                type="button"
+                onClick={() => setActiveLatestBlogIndex(index)}
+              >
+                <span>{post.categories[0]?.title ?? 'Blog'}</span>
+                <strong>{post.title}</strong>
+              </button>
             ))}
           </div>
         </section>

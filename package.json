@@ -9,6 +9,7 @@
     "deploy:api": "wrangler deploy",
     "deploy:web": "npm run build && wrangler pages deploy dist --project-name=hhs-site",
     "import:wp-blog": "node scripts/import-wordpress-blog.mjs",
+    "import:wp-blog-dump": "node scripts/import-wordpress-blog-dump.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
