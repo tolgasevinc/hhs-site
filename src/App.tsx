@@ -90,60 +90,24 @@ type BlogPost = {
   tags: BlogTaxonomyItem[];
 };
 
-type BlogImportPreviewImage = {
-  sourceUrl: string;
-  previewUrl: string;
-  relativePath?: string;
-  matchedBy?: string;
-};
-
-type BlogImportPayload = {
+type SiteReference = {
   key: string;
   title: string;
-  summary: string;
-  targetKeyword: string;
-  content: string;
-  slug: string;
-  metaTitle: string;
-  metaKeywords: string;
-  metaDescription: string;
-  image: string;
-  imageAlt: string;
-  oldUrl: string;
-  status: 'draft' | 'published';
-  publishedAt: string;
-  categories: string[];
-  tags: string[];
-  seoScore: number;
+  description: string;
+  imageUrl: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
-type BlogImportPreviewPost = {
-  id: string;
-  payload: BlogImportPayload;
-  categories: BlogTaxonomyItem[];
-  preview: {
-    summaryText: string;
-    content: string;
-    featuredImage: BlogImportPreviewImage;
-    contentImages: BlogImportPreviewImage[];
-    imageFailures: BlogImportPreviewImage[];
-  };
-};
-
-type BlogImportPreview = {
-  generatedAt: string;
-  source: {
-    sqlFile: string;
-    uploadsRoot: string;
-    detectedPrefixes: string[];
-  };
-  totals: {
-    posts: number;
-    availableImagesByName: number;
-    imageFailures: number;
-  };
-  posts: BlogImportPreviewPost[];
-  imageFailures: (BlogImportPreviewImage & { post?: string; url?: string })[];
+type ReferenceFormState = {
+  key: string;
+  title: string;
+  description: string;
+  imageUrl: string;
+  sortOrder: string;
+  isActive: boolean;
 };
 
 type ProductFormState = {
@@ -201,7 +165,7 @@ type AssetItem = {
   isUsed?: boolean;
 };
 
-type AssetFolderKey = 'all' | 'urun' | 'kategori' | 'blog' | 'sayfa' | 'other';
+type AssetFolderKey = 'all' | 'urun' | 'kategori' | 'blog' | 'sayfa' | 'referans' | 'other';
 
 const assetFolderFilters: { key: AssetFolderKey; label: string }[] = [
   { key: 'all', label: 'Tümü' },
@@ -209,6 +173,7 @@ const assetFolderFilters: { key: AssetFolderKey; label: string }[] = [
   { key: 'kategori', label: 'Kategori' },
   { key: 'blog', label: 'Blog' },
   { key: 'sayfa', label: 'Sayfa' },
+  { key: 'referans', label: 'Referans' },
   { key: 'other', label: 'Diğer' },
 ];
 
@@ -229,6 +194,10 @@ const getAssetFolderKey = (assetKey: string): AssetFolderKey => {
 
   if (folder === 'sayfa' || folder === 'admin-avatars') {
     return 'sayfa';
+  }
+
+  if (folder === 'referans') {
+    return 'referans';
   }
 
   return 'other';
@@ -296,36 +265,12 @@ type ContactSettings = {
   footerDescription: string;
 };
 
-type WpSourceSettings = {
-  host: string;
-  port: number;
-  database: string;
-  username: string;
-  password: string;
-  tablePrefix: string;
-  oldSiteUrl: string;
-  includeDrafts: boolean;
-  hasPassword?: boolean;
-  lastTestAt?: string;
-  lastTestStatus?: string;
-  lastTestMessage?: string;
-};
-
 type PushoverSettings = {
   userKey: string;
   apiToken: string;
   emailAddress: string;
   isActive: boolean;
   hasApiToken?: boolean;
-};
-
-type WpSourceTestResult = {
-  connected: boolean;
-  tables: string[];
-  totalTables: number;
-  postCount: number;
-  seoMetaKeys: { meta_key: string; total: number }[];
-  error?: string;
 };
 
 type QuoteQuestion = {
@@ -425,14 +370,14 @@ type ServiceRequest = {
 type AdminSection =
   | 'products'
   | 'blog'
-  | 'blogImport'
   | 'assets'
+  | 'references'
   | 'quoteQuestions'
   | 'quoteRequests'
   | 'serviceRequests'
   | 'users'
   | 'database';
-type SettingsTab = 'footer' | 'contact' | 'wordpress' | 'pushover';
+type SettingsTab = 'footer' | 'contact' | 'pushover';
 
 type DatabaseColumn = {
   name: string;
@@ -511,21 +456,6 @@ const defaultContactSettings: ContactSettings = {
   footerDescription: 'Otomatik kapı, bariyer ve geçiş kontrol sistemlerinde keşif, satış, montaj ve teknik destek.',
 };
 
-const defaultWpSourceSettings: WpSourceSettings = {
-  host: '',
-  port: 3306,
-  database: '',
-  username: '',
-  password: '',
-  tablePrefix: 'wp_',
-  oldSiteUrl: '',
-  includeDrafts: false,
-  hasPassword: false,
-  lastTestAt: '',
-  lastTestStatus: '',
-  lastTestMessage: '',
-};
-
 const defaultPushoverSettings: PushoverSettings = {
   userKey: '',
   apiToken: '',
@@ -564,16 +494,6 @@ const contactSettingFields: { key: keyof ContactSettings; label: string; placeho
   },
 ];
 
-const wpSourceFields: { key: keyof WpSourceSettings; label: string; placeholder: string; type?: string }[] = [
-  { key: 'host', label: 'MySQL Host', placeholder: '127.0.0.1 veya mysql.example.com' },
-  { key: 'port', label: 'Port', placeholder: '3306', type: 'number' },
-  { key: 'database', label: 'Veritabanı', placeholder: 'wordpress_db' },
-  { key: 'username', label: 'Kullanıcı', placeholder: 'wp_user' },
-  { key: 'password', label: 'Şifre', placeholder: 'Kayıtlı şifreyi değiştirmek için yazın', type: 'password' },
-  { key: 'tablePrefix', label: 'Tablo Prefix', placeholder: 'wp_' },
-  { key: 'oldSiteUrl', label: 'Eski Site URL', placeholder: 'https://eskisite.com' },
-];
-
 const serviceRequestTypes = [
   { value: 'Arıza', label: 'Arıza', tone: 'danger', icon: '!' },
   { value: 'Aksesuar Talebi', label: 'Aksesuar Talebi', tone: 'success', icon: '+' },
@@ -586,6 +506,15 @@ const emptyServiceRequestForm: ServiceRequestFormState = {
   phone: '',
   productKey: '',
   description: '',
+};
+
+const emptyReferenceForm: ReferenceFormState = {
+  key: `ref_${crypto.randomUUID()}`,
+  title: '',
+  description: '',
+  imageUrl: '',
+  sortOrder: '0',
+  isActive: true,
 };
 
 const emptyQuoteContactForm: QuoteContactFormState = {
@@ -932,15 +861,12 @@ function App() {
   const [hasMoreBlogPosts, setHasMoreBlogPosts] = useState(false);
   const [blogCategories, setBlogCategories] = useState<BlogTaxonomyItem[]>([]);
   const [blogTags, setBlogTags] = useState<BlogTaxonomyItem[]>([]);
-  const [blogImportPreview, setBlogImportPreview] = useState<BlogImportPreview | null>(null);
-  const [selectedBlogImportIds, setSelectedBlogImportIds] = useState<Set<string>>(new Set());
-  const [importedBlogImportIds, setImportedBlogImportIds] = useState<Set<string>>(new Set());
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
+  const [siteReferences, setSiteReferences] = useState<SiteReference[]>([]);
   const [quoteQuestions, setQuoteQuestions] = useState<QuoteQuestion[]>([]);
   const [quoteRequests, setQuoteRequests] = useState<QuoteRequest[]>([]);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [contactSettings, setContactSettings] = useState<ContactSettings>(defaultContactSettings);
-  const [wpSourceSettings, setWpSourceSettings] = useState<WpSourceSettings>(defaultWpSourceSettings);
   const [pushoverSettings, setPushoverSettings] = useState<PushoverSettings>(defaultPushoverSettings);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [databaseTables, setDatabaseTables] = useState<DatabaseTable[]>([]);
@@ -957,13 +883,12 @@ function App() {
   const [isAssetManagerOpen, setIsAssetManagerOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [isReferenceModalOpen, setIsReferenceModalOpen] = useState(false);
   const [isQuoteQuestionModalOpen, setIsQuoteQuestionModalOpen] = useState(false);
   const [isSavingSocialLinks, setIsSavingSocialLinks] = useState(false);
   const [isSavingContactSettings, setIsSavingContactSettings] = useState(false);
   const [isSavingQuoteQuestions, setIsSavingQuoteQuestions] = useState(false);
-  const [isSavingWpSourceSettings, setIsSavingWpSourceSettings] = useState(false);
   const [isSavingPushoverSettings, setIsSavingPushoverSettings] = useState(false);
-  const [isTestingWpSourceSettings, setIsTestingWpSourceSettings] = useState(false);
   const [isSubmittingQuoteRequest, setIsSubmittingQuoteRequest] = useState(false);
   const [isSubmittingServiceRequest, setIsSubmittingServiceRequest] = useState(false);
   const [isSavingUser, setIsSavingUser] = useState(false);
@@ -973,13 +898,12 @@ function App() {
   const [closingRequestId, setClosingRequestId] = useState('');
   const [isSendingPushoverTest, setIsSendingPushoverTest] = useState(false);
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
-  const [isLoadingBlogImportPreview, setIsLoadingBlogImportPreview] = useState(false);
-  const [isImportingBlogPreview, setIsImportingBlogPreview] = useState(false);
   const [isDeletingSelectedAssets, setIsDeletingSelectedAssets] = useState(false);
   const [isUploadingProductImage, setIsUploadingProductImage] = useState(false);
   const [isUploadingBlogImage, setIsUploadingBlogImage] = useState(false);
   const [isUploadingCategoryImage, setIsUploadingCategoryImage] = useState(false);
   const [isUploadingQuoteQuestionImage, setIsUploadingQuoteQuestionImage] = useState(false);
+  const [isUploadingReferenceImage, setIsUploadingReferenceImage] = useState(false);
   const [isUploadingUserAvatar, setIsUploadingUserAvatar] = useState(false);
   const [isConfirmingProductDelete, setIsConfirmingProductDelete] = useState(false);
   const [isConfirmingCategoryDelete, setIsConfirmingCategoryDelete] = useState(false);
@@ -995,19 +919,19 @@ function App() {
   const [quoteContactForm, setQuoteContactForm] = useState<QuoteContactFormState>(emptyQuoteContactForm);
   const [quoteSubmitMessage, setQuoteSubmitMessage] = useState('');
   const [contactSettingsForm, setContactSettingsForm] = useState<ContactSettings>(defaultContactSettings);
-  const [wpSourceSettingsForm, setWpSourceSettingsForm] = useState<WpSourceSettings>(defaultWpSourceSettings);
   const [pushoverSettingsForm, setPushoverSettingsForm] = useState<PushoverSettings>(defaultPushoverSettings);
-  const [wpSourceTestResult, setWpSourceTestResult] = useState<WpSourceTestResult | null>(null);
   const [serviceRequestForm, setServiceRequestForm] = useState<ServiceRequestFormState>(emptyServiceRequestForm);
   const [serviceRequestMessage, setServiceRequestMessage] = useState('');
   const [editingProductKey, setEditingProductKey] = useState<string | null>(null);
   const [editingBlogKey, setEditingBlogKey] = useState<string | null>(null);
   const [editingCategoryKey, setEditingCategoryKey] = useState<string | null>(null);
   const [editingQuoteQuestionId, setEditingQuoteQuestionId] = useState<string | null>(null);
+  const [editingReferenceKey, setEditingReferenceKey] = useState<string | null>(null);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [productForm, setProductForm] = useState<ProductFormState>(createEmptyProductForm());
   const [blogPostForm, setBlogPostForm] = useState<BlogPostFormState>(createEmptyBlogPostForm());
   const [categoryForm, setCategoryForm] = useState<CategoryFormState>(emptyCategoryForm);
+  const [referenceForm, setReferenceForm] = useState<ReferenceFormState>(emptyReferenceForm);
   const [adminUserForm, setAdminUserForm] = useState<AdminUserFormState>(emptyAdminUserForm);
   const [adminMessage, setAdminMessage] = useState('');
   const [adminToken, setAdminToken] = useState('');
@@ -1022,6 +946,7 @@ function App() {
   const blogImageInputRef = useRef<HTMLInputElement>(null);
   const categoryImageInputRef = useRef<HTMLInputElement>(null);
   const quoteQuestionImageInputRef = useRef<HTMLInputElement>(null);
+  const referenceImageInputRef = useRef<HTMLInputElement>(null);
   const cropPointRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const cropPreviewImageRefs = useRef<(HTMLImageElement | null)[]>([]);
   const userAvatarInputRef = useRef<HTMLInputElement>(null);
@@ -1086,11 +1011,7 @@ function App() {
       return 'products';
     }
 
-    if (section === 'blogImport') {
-      return 'blog';
-    }
-
-    if (section === 'quoteQuestions' || section === 'quoteRequests' || section === 'serviceRequests') {
+    if (section === 'references' || section === 'quoteQuestions' || section === 'quoteRequests' || section === 'serviceRequests') {
       return 'settings';
     }
 
@@ -1109,13 +1030,15 @@ function App() {
         ? 'blog'
         : canAccessAdminSection('quoteQuestions')
           ? 'quoteQuestions'
-          : canAccessAdminSection('quoteRequests')
-            ? 'quoteRequests'
-            : canAccessAdminSection('serviceRequests')
-              ? 'serviceRequests'
-              : canAccessAdminSection('users')
-                ? 'users'
-                : 'database';
+          : canAccessAdminSection('references')
+            ? 'references'
+            : canAccessAdminSection('quoteRequests')
+              ? 'quoteRequests'
+              : canAccessAdminSection('serviceRequests')
+                ? 'serviceRequests'
+                : canAccessAdminSection('users')
+                  ? 'users'
+                  : 'database';
   const phonePrimaryHref = createPhoneHref(contactSettings.phonePrimary);
   const phoneSecondaryHref = createPhoneHref(contactSettings.phoneSecondary);
   const whatsappHref = createWhatsAppHref(contactSettings.whatsapp);
@@ -1240,9 +1163,7 @@ function App() {
   const normalizedLatestBlogIndex = latestBlogPosts.length ? activeLatestBlogIndex % latestBlogPosts.length : 0;
   const activeLatestBlogPost = latestBlogPosts[normalizedLatestBlogIndex];
   const blogSeo = calculateBlogSeo(blogPostForm);
-  const blogImportPosts = blogImportPreview?.posts ?? [];
-  const selectedBlogImportPosts = blogImportPosts.filter((post) => selectedBlogImportIds.has(post.id));
-  const blogImportMissingImageCount = blogImportPreview?.imageFailures.length ?? 0;
+  const activeSiteReferences = siteReferences.filter((reference) => reference.isActive);
   const openQuoteRequestCount = quoteRequests.filter((request) => request.status !== 'closed').length;
   const openServiceRequestCount = serviceRequests.filter((request) => request.status !== 'closed').length;
 
@@ -1402,48 +1323,6 @@ function App() {
   }, [latestBlogPosts.length]);
 
   useEffect(() => {
-    if (!isBlogIndexPage) {
-      return undefined;
-    }
-
-    const shouldLoadMore = () => {
-      if (!hasMoreBlogPostsRef.current || isLoadingMoreBlogPostsRef.current) {
-        return;
-      }
-
-      const markerTop = blogLoadMoreRef.current?.getBoundingClientRect().top ?? document.documentElement.scrollHeight;
-
-      if (markerTop <= window.innerHeight + 420) {
-        void loadMoreBlogPosts();
-      }
-    };
-
-    const marker = blogLoadMoreRef.current;
-    const observer =
-      marker && 'IntersectionObserver' in window
-        ? new IntersectionObserver(
-            (entries) => {
-              if (entries.some((entry) => entry.isIntersecting)) {
-                void loadMoreBlogPosts();
-              }
-            },
-            { rootMargin: '420px 0px' },
-          )
-        : null;
-
-    observer?.observe(marker as Element);
-    window.addEventListener('scroll', shouldLoadMore, { passive: true });
-    window.addEventListener('resize', shouldLoadMore);
-    shouldLoadMore();
-
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('scroll', shouldLoadMore);
-      window.removeEventListener('resize', shouldLoadMore);
-    };
-  }, [blogPosts.length, hasMoreBlogPosts, isBlogIndexPage, loadMoreBlogPosts]);
-
-  useEffect(() => {
     if (!isPanelPage) {
       return;
     }
@@ -1493,6 +1372,7 @@ function App() {
           categoriesResult,
           socialLinksResult,
           contactSettingsResult,
+          referencesResult,
           quoteQuestionsResult,
           pushoverSettingsResult,
           quoteRequestsResult,
@@ -1506,6 +1386,11 @@ function App() {
             readApiJson<{ categories?: AdminCategory[] }>(fetch(apiUrl('/api/product-categories'))),
             readApiJson<{ links?: SocialLink[] }>(fetch(apiUrl('/api/footer-social-links'))),
             readApiJson<{ settings?: ContactSettings }>(fetch(apiUrl('/api/contact-settings'))),
+            readApiJson<{ references?: SiteReference[] }>(
+              isPanelPage && adminUser?.modules.includes('settings')
+                ? authorizedFetch('/api/references?includeInactive=1')
+                : fetch(apiUrl('/api/references')),
+            ),
             readApiJson<{ questions?: QuoteQuestion[] }>(
               isPanelPage && adminUser?.modules.includes('settings')
                 ? authorizedFetch('/api/quote-questions?includeInactive=1')
@@ -1538,6 +1423,7 @@ function App() {
         const categoriesData = categoriesResult.data ?? {};
         const socialLinksData = socialLinksResult.data ?? {};
         const contactSettingsData = contactSettingsResult.data ?? {};
+        const referencesData = referencesResult.data ?? {};
         const quoteQuestionsData = quoteQuestionsResult.data ?? {};
         const pushoverSettingsData = pushoverSettingsResult.data ?? {};
         const quoteRequestsData = quoteRequestsResult.data ?? {};
@@ -1566,6 +1452,10 @@ function App() {
           setContactSettingsForm(contactSettingsData.settings);
         }
 
+        if (referencesData.references) {
+          setSiteReferences(referencesData.references);
+        }
+
         if (quoteQuestionsData.questions) {
           setQuoteQuestions(quoteQuestionsData.questions);
         }
@@ -1587,7 +1477,7 @@ function App() {
           setBlogPosts(blogPostsData.posts);
 
           if (isBlogIndexPage) {
-            hasMoreBlogPostsRef.current = blogPostsData.posts.length === blogIndexPageSize;
+            setCurrentBlogPage(1);
             setHasMoreBlogPosts(blogPostsData.posts.length === blogIndexPageSize);
           }
         }
@@ -2173,6 +2063,93 @@ function App() {
     }
   };
 
+  const openNewReferenceModal = () => {
+    setEditingReferenceKey(null);
+    setReferenceForm({ ...emptyReferenceForm, key: `ref_${crypto.randomUUID()}` });
+    setIsReferenceModalOpen(true);
+    setAdminMessage('');
+  };
+
+  const openEditReferenceModal = (reference: SiteReference) => {
+    setEditingReferenceKey(reference.key);
+    setReferenceForm({
+      key: reference.key,
+      title: reference.title,
+      description: reference.description,
+      imageUrl: reference.imageUrl,
+      sortOrder: String(reference.sortOrder ?? 0),
+      isActive: reference.isActive,
+    });
+    setIsReferenceModalOpen(true);
+    setAdminMessage('');
+  };
+
+  const closeReferenceModal = () => {
+    setIsReferenceModalOpen(false);
+    setEditingReferenceKey(null);
+  };
+
+  const updateReferenceForm = (field: keyof ReferenceFormState, value: string | boolean) => {
+    setReferenceForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }));
+  };
+
+  const updateReferenceTitle = (title: string) => {
+    setReferenceForm((currentForm) => ({
+      ...currentForm,
+      title,
+      key: editingReferenceKey ? currentForm.key : createProductKeyFromTitle(title),
+    }));
+  };
+
+  const uploadReferenceImage = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setAdminMessage('Lütfen geçerli bir referans görseli seçin.');
+      return;
+    }
+
+    setIsUploadingReferenceImage(true);
+
+    try {
+      const optimizedImage = await optimizeProductImage(file);
+      const response = await authorizedFetch(`/api/assets/page-image?variant=logo&folder=referans&name=${encodeURIComponent(file.name)}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'image/webp',
+        },
+        body: optimizedImage,
+      });
+      const data = (await response.json().catch(() => null)) as { url?: string; size?: number } | null;
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (!response.ok || !data?.url) {
+        setAdminMessage('Referans görseli yüklenemedi.');
+        return;
+      }
+
+      updateReferenceForm('imageUrl', data.url.startsWith('/api/') ? apiUrl(data.url) : data.url);
+      setAdminMessage(`Referans görseli yüklendi (${Math.round((data.size ?? optimizedImage.size) / 1024)} KB).`);
+    } catch {
+      setAdminMessage('Referans görseli optimize edilip yüklenemedi.');
+    } finally {
+      setIsUploadingReferenceImage(false);
+    }
+  };
+
   const openCategoryModal = () => {
     setEditingCategoryKey(null);
     setCategoryForm(emptyCategoryForm);
@@ -2464,12 +2441,15 @@ function App() {
   };
 
   const reloadAdminCatalog = async () => {
-    const [productsResult, categoriesResult, socialLinksResult, contactSettingsResult, quoteQuestionsResult, pushoverSettingsResult, blogPostsResult, blogCategoriesResult, blogTagsResult] =
+    const [productsResult, categoriesResult, socialLinksResult, contactSettingsResult, referencesResult, quoteQuestionsResult, pushoverSettingsResult, blogPostsResult, blogCategoriesResult, blogTagsResult] =
       await Promise.all([
         readApiJson<{ products?: AdminProduct[] }>(fetch(apiUrl('/api/products'))),
         readApiJson<{ categories?: AdminCategory[] }>(fetch(apiUrl('/api/product-categories'))),
         readApiJson<{ links?: SocialLink[] }>(fetch(apiUrl('/api/footer-social-links'))),
         readApiJson<{ settings?: ContactSettings }>(fetch(apiUrl('/api/contact-settings'))),
+        readApiJson<{ references?: SiteReference[] }>(
+          canAccessModule('settings') ? authorizedFetch('/api/references?includeInactive=1') : fetch(apiUrl('/api/references')),
+        ),
         readApiJson<{ questions?: QuoteQuestion[] }>(
           canAccessModule('settings') ? authorizedFetch('/api/quote-questions?includeInactive=1') : fetch(apiUrl('/api/quote-questions')),
         ),
@@ -2488,6 +2468,7 @@ function App() {
     const categoriesData = categoriesResult.data ?? {};
     const socialLinksData = socialLinksResult.data ?? {};
     const contactSettingsData = contactSettingsResult.data ?? {};
+    const referencesData = referencesResult.data ?? {};
     const quoteQuestionsData = quoteQuestionsResult.data ?? {};
     const pushoverSettingsData = pushoverSettingsResult.data ?? {};
     const blogPostsData = blogPostsResult.data ?? {};
@@ -2514,6 +2495,10 @@ function App() {
       setContactSettingsForm(contactSettingsData.settings);
     }
 
+    if (referencesData.references) {
+      setSiteReferences(referencesData.references);
+    }
+
     if (quoteQuestionsData.questions) {
       setQuoteQuestions(quoteQuestionsData.questions);
     }
@@ -2533,213 +2518,6 @@ function App() {
 
     if (blogTagsData.tags) {
       setBlogTags(blogTagsData.tags);
-    }
-  };
-
-  const loadBlogImportPreview = async () => {
-    setIsLoadingBlogImportPreview(true);
-
-    try {
-      const response = await fetch(`/wp-import-preview.json?ts=${Date.now()}`);
-      const data = (await response.json().catch(() => null)) as BlogImportPreview | null;
-
-      if (!response.ok || !data?.posts) {
-        setAdminMessage('Blog import önizleme paketi bulunamadı. Önce preview komutunu çalıştırın.');
-        return;
-      }
-
-      setBlogImportPreview(data);
-      setSelectedBlogImportIds(new Set(data.posts.map((post) => post.id)));
-      setAdminMessage(`${data.posts.length} blog yazısı önizlemeye yüklendi.`);
-    } catch {
-      setAdminMessage('Blog import önizlemesi yüklenemedi.');
-    } finally {
-      setIsLoadingBlogImportPreview(false);
-    }
-  };
-
-  const toggleBlogImportSelection = (postId: string) => {
-    setSelectedBlogImportIds((currentSelection) => {
-      const nextSelection = new Set(currentSelection);
-
-      if (nextSelection.has(postId)) {
-        nextSelection.delete(postId);
-      } else {
-        nextSelection.add(postId);
-      }
-
-      return nextSelection;
-    });
-  };
-
-  const setAllBlogImportSelection = (isSelected: boolean) => {
-    setSelectedBlogImportIds(new Set(isSelected ? blogImportPosts.map((post) => post.id) : []));
-  };
-
-  const uploadPreviewBlogImage = async (previewUrl: string, name: string) => {
-    if (!previewUrl) {
-      return '';
-    }
-
-    const imageResponse = await fetch(previewUrl);
-
-    if (!imageResponse.ok) {
-      throw new Error(`Önizleme görseli okunamadı: ${previewUrl}`);
-    }
-
-    const imageBlob = await imageResponse.blob();
-    const uploadResponse = await authorizedFetch(`/api/assets/blog-image?variant=import&folder=blog&name=${encodeURIComponent(name)}`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'image/webp',
-      },
-      body: imageBlob,
-    });
-    const data = (await uploadResponse.json().catch(() => null)) as { url?: string } | null;
-
-    if (uploadResponse.status === 401) {
-      setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
-      await logoutAdmin();
-      throw new Error('Unauthorized');
-    }
-
-    if (!uploadResponse.ok || !data?.url) {
-      throw new Error(`Görsel yüklenemedi: ${previewUrl}`);
-    }
-
-    return data.url.startsWith('/api/') ? apiUrl(data.url) : data.url;
-  };
-
-  const normalizeBlogImportPayload = (post: BlogImportPreviewPost) => {
-    const payload = { ...post.payload };
-    const taxonomyKeywords = [
-      ...post.categories.map((category) => category.title),
-      ...payload.tags,
-    ].filter(Boolean).join(', ');
-
-    payload.key = payload.key.trim() || `wpPost${post.id}`;
-    payload.title = payload.title.trim() || `WordPress Yazısı ${post.id}`;
-    payload.summary = payload.summary.trim() || post.preview.summaryText.trim() || payload.title;
-    payload.targetKeyword = payload.targetKeyword.trim() || payload.title.split(/\s+/).slice(0, 2).join(' ');
-    payload.content = payload.content.trim() || payload.summary;
-    payload.slug = payload.slug.trim() || payload.key;
-    payload.metaTitle = payload.metaTitle.trim() || payload.title;
-    payload.metaKeywords = payload.metaKeywords.trim() || taxonomyKeywords || payload.targetKeyword || payload.title;
-    payload.metaDescription = payload.metaDescription.trim() || payload.summary.slice(0, 155);
-
-    return payload;
-  };
-
-  const findExistingBlogImportPost = (payload: BlogImportPayload, existingPosts: BlogPost[]) =>
-    existingPosts.find(
-      (post) =>
-        post.key === payload.key ||
-        post.slug === payload.slug ||
-        (Boolean(payload.oldUrl) && post.oldUrl === payload.oldUrl),
-    );
-
-  const importSelectedBlogPreviewPosts = async () => {
-    if (selectedBlogImportPosts.length === 0) {
-      setAdminMessage('Aktarılacak blog yazısı seçilmedi.');
-      return;
-    }
-
-    setIsImportingBlogPreview(true);
-
-    try {
-      const existingPostsResponse = await authorizedFetch('/api/blog-posts?includeDrafts=1');
-      const existingPostsData = (await existingPostsResponse.json().catch(() => null)) as { posts?: BlogPost[] } | null;
-
-      if (existingPostsResponse.status === 401) {
-        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
-        await logoutAdmin();
-        return;
-      }
-
-      if (!existingPostsResponse.ok || !existingPostsData?.posts) {
-        throw new Error('Mevcut blog kayıtları kontrol edilemedi.');
-      }
-
-      const knownBlogPosts = [...existingPostsData.posts];
-
-      for (const previewPost of selectedBlogImportPosts) {
-        const payload = normalizeBlogImportPayload(previewPost);
-        const existingPost = findExistingBlogImportPost(payload, knownBlogPosts);
-
-        if (previewPost.preview.featuredImage.previewUrl) {
-          payload.image = await uploadPreviewBlogImage(previewPost.preview.featuredImage.previewUrl, `${payload.slug}-featured`);
-        }
-
-        for (const [index, contentImage] of previewPost.preview.contentImages.entries()) {
-          if (!contentImage.previewUrl) {
-            continue;
-          }
-
-          const uploadedUrl = await uploadPreviewBlogImage(contentImage.previewUrl, `${payload.slug}-content-${index + 1}`);
-          payload.content = payload.content.replaceAll(contentImage.sourceUrl, uploadedUrl);
-        }
-
-        for (const category of previewPost.categories) {
-          const categoryResponse = await authorizedFetch('/api/blog-categories', {
-            method: 'PUT',
-            headers: {
-              'content-type': 'application/json',
-            },
-            body: JSON.stringify({ ...category, sortOrder: category.sortOrder ?? 0 }),
-          });
-
-          if (categoryResponse.status === 401) {
-            setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
-            await logoutAdmin();
-            return;
-          }
-
-          if (!categoryResponse.ok) {
-            throw new Error(`${category.title} kategorisi aktarılamadı.`);
-          }
-        }
-
-        const postResponse = await authorizedFetch(existingPost ? `/api/blog-posts/${encodeURIComponent(existingPost.key)}` : '/api/blog-posts', {
-          method: existingPost ? 'PUT' : 'POST',
-          headers: {
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        });
-
-        if (postResponse.status === 401) {
-          setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
-          await logoutAdmin();
-          return;
-        }
-
-        if (!postResponse.ok) {
-          const errorData = (await postResponse.json().catch(() => null)) as { error?: string } | null;
-          throw new Error(`${payload.title} yazısı aktarılamadı.${errorData?.error ? ` Hata: ${errorData.error}` : ''}`);
-        }
-
-        const postData = (await postResponse.json().catch(() => null)) as { post?: BlogPost } | null;
-
-        if (postData?.post) {
-          const existingIndex = knownBlogPosts.findIndex((post) => post.key === postData.post?.key);
-
-          if (existingIndex >= 0) {
-            knownBlogPosts[existingIndex] = postData.post;
-          } else {
-            knownBlogPosts.push(postData.post);
-          }
-        }
-
-        setImportedBlogImportIds((currentIds) => new Set(currentIds).add(previewPost.id));
-      }
-
-      setSelectedBlogImportIds(new Set());
-      await reloadAdminCatalog();
-      setAdminMessage(`${selectedBlogImportPosts.length} blog yazısı aktarıldı.`);
-    } catch (error) {
-      setAdminMessage(error instanceof Error ? error.message : 'Blog yazıları aktarılamadı.');
-    } finally {
-      setIsImportingBlogPreview(false);
     }
   };
 
@@ -2896,36 +2674,10 @@ function App() {
     await reloadAssets();
   };
 
-  const loadWpSourceSettings = async () => {
-    try {
-      const response = await authorizedFetch('/api/wp-source-settings');
-      const data = (await response.json()) as { settings?: WpSourceSettings };
-
-      if (response.status === 401) {
-        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
-        await logoutAdmin();
-        return;
-      }
-
-      if (!response.ok || !data.settings) {
-        setAdminMessage('WordPress kaynak ayarları yüklenemedi.');
-        return;
-      }
-
-      const settings = { ...data.settings, password: '' };
-      setWpSourceSettings(settings);
-      setWpSourceSettingsForm(settings);
-    } catch {
-      setAdminMessage('WordPress kaynak ayarları yüklenemedi. API bağlantısını kontrol edin.');
-    }
-  };
-
   const openSettingsModal = () => {
     setActiveSettingsTab('footer');
     setIsSettingsModalOpen(true);
     setAdminMessage('');
-    setWpSourceTestResult(null);
-    void loadWpSourceSettings();
   };
 
   const closeSettingsModal = () => {
@@ -3126,13 +2878,6 @@ function App() {
     setQuoteContactForm((currentForm) => ({
       ...currentForm,
       [field]: field === 'phone' ? value.replace(/\D/g, '').slice(0, 10) : value,
-    }));
-  };
-
-  const updateWpSourceSettingsForm = (field: keyof WpSourceSettings, value: string | boolean) => {
-    setWpSourceSettingsForm((currentForm) => ({
-      ...currentForm,
-      [field]: field === 'port' ? Number(value) : value,
     }));
   };
 
@@ -3634,127 +3379,6 @@ function App() {
     }
   };
 
-  const createWpSourcePayload = () => ({
-    host: wpSourceSettingsForm.host.trim(),
-    port: Number(wpSourceSettingsForm.port) || 3306,
-    database: wpSourceSettingsForm.database.trim(),
-    username: wpSourceSettingsForm.username.trim(),
-    password: wpSourceSettingsForm.password.trim(),
-    tablePrefix: wpSourceSettingsForm.tablePrefix.trim() || 'wp_',
-    oldSiteUrl: wpSourceSettingsForm.oldSiteUrl.trim(),
-    includeDrafts: wpSourceSettingsForm.includeDrafts,
-  });
-
-  const getWpSourceFormErrors = () => {
-    const errors: string[] = [];
-
-    if (!wpSourceSettingsForm.host.trim()) {
-      errors.push('MySQL host');
-    }
-
-    if (!wpSourceSettingsForm.database.trim()) {
-      errors.push('veritabanı');
-    }
-
-    if (!wpSourceSettingsForm.username.trim()) {
-      errors.push('kullanıcı');
-    }
-
-    if (!Number.isInteger(Number(wpSourceSettingsForm.port)) || Number(wpSourceSettingsForm.port) <= 0 || Number(wpSourceSettingsForm.port) > 65535) {
-      errors.push('port');
-    }
-
-    if (!/^[A-Za-z0-9_]*$/.test(wpSourceSettingsForm.tablePrefix.trim())) {
-      errors.push('tablo prefix');
-    }
-
-    return errors;
-  };
-
-  const saveWpSourceSettings = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formErrors = getWpSourceFormErrors();
-
-    if (formErrors.length > 0) {
-      setAdminMessage(`WordPress MySQL ayarlarında eksik veya hatalı alan var: ${formErrors.join(', ')}.`);
-      return;
-    }
-
-    setIsSavingWpSourceSettings(true);
-
-    try {
-      const response = await authorizedFetch('/api/wp-source-settings', {
-        method: 'PUT',
-        headers: {
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify(createWpSourcePayload()),
-      });
-      const data = (await response.json()) as { settings?: WpSourceSettings; fields?: string[] };
-
-      if (response.status === 401) {
-        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
-        await logoutAdmin();
-        return;
-      }
-
-      if (!response.ok || !data.settings) {
-        const fields = data.fields?.length ? ` Hatalı alanlar: ${data.fields.join(', ')}.` : '';
-        setAdminMessage(`WordPress MySQL ayarları kaydedilemedi.${fields}`);
-        return;
-      }
-
-      const settings = { ...data.settings, password: '' };
-      setWpSourceSettings(settings);
-      setWpSourceSettingsForm(settings);
-      setAdminMessage('WordPress MySQL ayarları kaydedildi.');
-    } catch {
-      setAdminMessage('WordPress MySQL ayarları kaydedilemedi. API bağlantısını kontrol edin.');
-    } finally {
-      setIsSavingWpSourceSettings(false);
-    }
-  };
-
-  const testWpSourceSettings = async () => {
-    const formErrors = getWpSourceFormErrors();
-
-    if (formErrors.length > 0) {
-      setAdminMessage(`Test için eksik veya hatalı alan var: ${formErrors.join(', ')}.`);
-      return;
-    }
-
-    setIsTestingWpSourceSettings(true);
-    setWpSourceTestResult(null);
-
-    try {
-      const response = await authorizedFetch('/api/wp-source-settings/test', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify(createWpSourcePayload()),
-      });
-      const data = (await response.json()) as WpSourceTestResult;
-
-      if (response.status === 401) {
-        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
-        await logoutAdmin();
-        return;
-      }
-
-      setWpSourceTestResult(data);
-      setAdminMessage(
-        data.connected
-          ? 'WordPress MySQL bağlantısı başarılı.'
-          : `WordPress MySQL bağlantısı kurulamadı.${data.error ? ` Hata: ${data.error}` : ''}`,
-      );
-    } catch {
-      setAdminMessage('WordPress MySQL bağlantısı test edilemedi. API bağlantısını kontrol edin.');
-    } finally {
-      setIsTestingWpSourceSettings(false);
-    }
-  };
-
   const submitQuoteRequest = async (isAnonymous: boolean) => {
     if (!selectedQuoteCategory || !selectedQuoteProduct || isQuoteContinueDisabled || (!isAnonymous && !isQuoteContactComplete)) {
       return;
@@ -4131,6 +3755,72 @@ function App() {
     setIsConfirmingCategoryDelete(false);
   };
 
+  const saveReference = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const payload = {
+      key: referenceForm.key.trim(),
+      title: referenceForm.title.trim(),
+      description: referenceForm.description.trim(),
+      imageUrl: referenceForm.imageUrl.trim(),
+      sortOrder: parseSortOrder(referenceForm.sortOrder),
+      isActive: referenceForm.isActive,
+    };
+
+    const response = await authorizedFetch(
+      editingReferenceKey ? `/api/references/${encodeURIComponent(editingReferenceKey)}` : '/api/references',
+      {
+        method: editingReferenceKey ? 'PUT' : 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+    const data = (await response.json().catch(() => null)) as { references?: SiteReference[] } | null;
+
+    if (response.status === 401) {
+      setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+      await logoutAdmin();
+      return;
+    }
+
+    if (!response.ok || !data?.references) {
+      setAdminMessage('Referans kaydedilemedi. Başlık ve görsel alanlarını kontrol edin.');
+      return;
+    }
+
+    setSiteReferences(data.references);
+    setAdminMessage(editingReferenceKey ? 'Referans güncellendi.' : 'Yeni referans eklendi.');
+    closeReferenceModal();
+  };
+
+  const deleteReference = async () => {
+    if (!editingReferenceKey) {
+      return;
+    }
+
+    const response = await authorizedFetch(`/api/references/${encodeURIComponent(editingReferenceKey)}`, {
+      method: 'DELETE',
+    });
+    const data = (await response.json().catch(() => null)) as { references?: SiteReference[] } | null;
+
+    if (response.status === 401) {
+      setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+      await logoutAdmin();
+      return;
+    }
+
+    if (!response.ok || !data?.references) {
+      setAdminMessage('Referans silinemedi.');
+      return;
+    }
+
+    setSiteReferences(data.references);
+    setAdminMessage('Referans silindi.');
+    closeReferenceModal();
+  };
+
   if (isPanelPage && authStatus === 'checking') {
     return (
       <main className="adminLoginPage">
@@ -4245,22 +3935,6 @@ function App() {
                 <span>Blog</span>
               </button>
             )}
-            {canAccessModule('blog') && (
-              <button
-                className={`adminNavItem${activeAdminSection === 'blogImport' ? ' active' : ''}`}
-                type="button"
-                onClick={() => {
-                  setAdminSection('blogImport');
-
-                  if (!blogImportPreview) {
-                    void loadBlogImportPreview();
-                  }
-                }}
-              >
-                <Upload size={20} strokeWidth={2.2} />
-                <span>Blog Import</span>
-              </button>
-            )}
             {canAccessModule('products') && (
               <button
                 className={`adminNavItem${activeAdminSection === 'assets' ? ' active' : ''}`}
@@ -4282,6 +3956,16 @@ function App() {
               >
                 <FileText size={20} strokeWidth={2.2} />
                 <span>Teklif Soruları</span>
+              </button>
+            )}
+            {canAccessModule('settings') && (
+              <button
+                className={`adminNavItem${activeAdminSection === 'references' ? ' active' : ''}`}
+                type="button"
+                onClick={() => setAdminSection('references')}
+              >
+                <ShieldCheck size={20} strokeWidth={2.2} />
+                <span>Referanslar</span>
               </button>
             )}
             {canAccessModule('settings') && (
@@ -4383,10 +4067,10 @@ function App() {
                   ? 'Ürünler'
                   : activeAdminSection === 'blog'
                     ? 'Blog'
-                    : activeAdminSection === 'blogImport'
-                      ? 'Blog Import'
-                      : activeAdminSection === 'assets'
-                        ? 'Görsel Yönetimi'
+                    : activeAdminSection === 'assets'
+                      ? 'Görsel Yönetimi'
+                      : activeAdminSection === 'references'
+                        ? 'Referanslar'
                         : activeAdminSection === 'quoteQuestions'
                           ? 'Teklif Soruları'
                           : activeAdminSection === 'quoteRequests'
@@ -4413,19 +4097,16 @@ function App() {
                   Yeni Blog Yazısı
                 </button>
               </div>
-            ) : activeAdminSection === 'blogImport' ? (
-              <div className="adminTopbarActions">
-                <button type="button" onClick={loadBlogImportPreview} disabled={isLoadingBlogImportPreview || isImportingBlogPreview}>
-                  {isLoadingBlogImportPreview ? 'Yükleniyor...' : 'Önizlemeyi Yenile'}
-                </button>
-                <button type="button" onClick={importSelectedBlogPreviewPosts} disabled={isImportingBlogPreview || selectedBlogImportPosts.length === 0}>
-                  {isImportingBlogPreview ? 'Aktarılıyor...' : `Seçili Yazıları Aktar (${selectedBlogImportPosts.length})`}
-                </button>
-              </div>
             ) : activeAdminSection === 'users' ? (
               <div className="adminTopbarActions">
                 <button type="button" onClick={openNewUserModal}>
                   Yeni Kullanıcı
+                </button>
+              </div>
+            ) : activeAdminSection === 'references' ? (
+              <div className="adminTopbarActions">
+                <button type="button" onClick={openNewReferenceModal}>
+                  Yeni Referans
                 </button>
               </div>
             ) : activeAdminSection === 'assets' ? (
@@ -4565,7 +4246,7 @@ function App() {
               <div className="adminProducts">
                 {blogPosts.map((post) => (
                   <button
-                    className="adminProductCard adminBlogCard"
+                    className={`adminProductCard adminBlogCard${post.status === 'draft' ? ' draft' : ' published'}`}
                     key={post.key}
                     type="button"
                     onClick={() => openEditBlogModal(post)}
@@ -4580,124 +4261,42 @@ function App() {
                 ))}
               </div>
             </>
-          ) : activeAdminSection === 'blogImport' ? (
+          ) : activeAdminSection === 'references' ? (
             <>
               <div className="adminStats">
                 <article>
-                  <span>Önizleme Yazısı</span>
-                  <strong>{blogImportPosts.length}</strong>
+                  <span>Toplam Referans</span>
+                  <strong>{siteReferences.length}</strong>
                 </article>
                 <article>
-                  <span>Seçili</span>
-                  <strong>{selectedBlogImportIds.size}</strong>
+                  <span>Yayında</span>
+                  <strong>{siteReferences.filter((reference) => reference.isActive).length}</strong>
                 </article>
                 <article>
-                  <span>Eksik Görsel</span>
-                  <strong>{blogImportMissingImageCount}</strong>
+                  <span>Sıralama</span>
+                  <strong>Panelden</strong>
                 </article>
               </div>
 
-              <section className="adminPanelForm adminBlogImportPanel">
-                <div className="adminBlogImportToolbar">
-                  <div>
-                    <strong>SQL önizleme paketi</strong>
-                    <span>
-                      {blogImportPreview
-                        ? `${blogImportPreview.source.detectedPrefixes.join(', ') || 'wp_'} / ${blogImportPreview.totals.availableImagesByName} yerel görsel`
-                        : 'Önce preview komutunu çalıştırıp paketi yükleyin.'}
-                    </span>
-                  </div>
-                  <div>
-                    <button type="button" onClick={() => setAllBlogImportSelection(true)} disabled={blogImportPosts.length === 0 || isImportingBlogPreview}>
-                      Tümünü Seç
-                    </button>
-                    <button type="button" onClick={() => setAllBlogImportSelection(false)} disabled={selectedBlogImportIds.size === 0 || isImportingBlogPreview}>
-                      Seçimi Temizle
-                    </button>
-                  </div>
-                </div>
-
-                {!blogImportPreview ? (
-                  <div className="adminQuoteQuestionEmpty">
-                    <strong>Önizleme paketi yüklenmedi.</strong>
-                    <span>`npm run import:wp-blog-dump -- --preview ...` komutunu çalıştırdıktan sonra önizlemeyi yenileyin.</span>
-                  </div>
-                ) : (
-                  <div className="adminBlogImportList">
-                    {blogImportPosts.map((post) => {
-                      const isSelected = selectedBlogImportIds.has(post.id);
-                      const isImported = importedBlogImportIds.has(post.id);
-                      const hasMissingImage =
-                        Boolean(post.preview.featuredImage.sourceUrl && !post.preview.featuredImage.previewUrl) ||
-                        post.preview.imageFailures.length > 0;
-
-                      return (
-                        <article className={`adminBlogImportCard${isSelected ? ' selected' : ''}`} key={post.id}>
-                          <label className="adminBlogImportSelect">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              disabled={isImportingBlogPreview || isImported}
-                              onChange={() => toggleBlogImportSelection(post.id)}
-                            />
-                            <span>{isImported ? 'Aktarıldı' : 'Seç'}</span>
-                          </label>
-
-                          <button
-                            className="adminBlogImportImage"
-                            type="button"
-                            disabled={!post.preview.featuredImage.previewUrl}
-                            onClick={() =>
-                              post.preview.featuredImage.previewUrl
-                                ? setImagePreview({ title: post.payload.title, url: post.preview.featuredImage.previewUrl })
-                                : undefined
-                            }
-                          >
-                            {post.preview.featuredImage.previewUrl ? (
-                              <img src={post.preview.featuredImage.previewUrl} alt={post.payload.imageAlt || post.payload.title} />
-                            ) : (
-                              <span>Görsel yok</span>
-                            )}
-                          </button>
-
-                          <div className="adminBlogImportBody">
-                            <div className="adminBlogImportHeader">
-                              <div>
-                                <span>
-                                  SEO %{post.payload.seoScore} / {post.payload.status === 'published' ? 'Yayında' : 'Taslak'}
-                                </span>
-                                <h2>{post.payload.title}</h2>
-                                <p>{post.payload.summary}</p>
-                              </div>
-                              {hasMissingImage && <strong className="adminBlogImportWarning">Eksik görsel</strong>}
-                            </div>
-
-                            <dl className="adminBlogImportMeta">
-                              <div>
-                                <dt>Slug</dt>
-                                <dd>{post.payload.slug}</dd>
-                              </div>
-                              <div>
-                                <dt>Kategori</dt>
-                                <dd>{post.categories.map((category) => category.title).join(', ') || '-'}</dd>
-                              </div>
-                              <div>
-                                <dt>İçerik Görseli</dt>
-                                <dd>{post.preview.contentImages.length}</dd>
-                              </div>
-                            </dl>
-
-                            <details className="adminBlogImportPreview">
-                              <summary>İçerik önizleme</summary>
-                              <div dangerouslySetInnerHTML={{ __html: post.preview.content || post.payload.content }} />
-                            </details>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
+              <div className="adminProducts adminReferenceGrid">
+                {siteReferences.length === 0 ? (
+                  <p className="adminProductEmpty">Henüz referans eklenmedi.</p>
+                ) : siteReferences.map((reference) => (
+                  <button
+                    className={`adminProductCard adminReferenceCard${reference.isActive ? ' active' : ' passive'}`}
+                    key={reference.key}
+                    type="button"
+                    onClick={() => openEditReferenceModal(reference)}
+                  >
+                    <img src={reference.imageUrl} alt={reference.title} />
+                    <div>
+                      <span>{reference.isActive ? 'Yayında' : 'Pasif'} / Sıra {reference.sortOrder}</span>
+                      <h2>{reference.title}</h2>
+                      <p>{reference.description || 'Detay metni eklenmedi.'}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </>
           ) : activeAdminSection === 'assets' ? (
             <>
@@ -5468,9 +5067,7 @@ function App() {
                         ? 'Footer'
                         : activeSettingsTab === 'contact'
                           ? 'İletişim Bilgileri'
-                          : activeSettingsTab === 'wordpress'
-                            ? 'WordPress MySQL Kaynağı'
-                            : 'Pushover Bildirimleri'}
+                          : 'Pushover Bildirimleri'}
                     </h2>
                   </div>
                   <button type="button" aria-label="Modalı kapat" onClick={closeSettingsModal}>
@@ -5493,13 +5090,6 @@ function App() {
                       onClick={() => setActiveSettingsTab('contact')}
                     >
                       İletişim
-                    </button>
-                    <button
-                      className={activeSettingsTab === 'wordpress' ? 'active' : ''}
-                      type="button"
-                      onClick={() => setActiveSettingsTab('wordpress')}
-                    >
-                      WordPress MySQL
                     </button>
                     <button
                       className={activeSettingsTab === 'pushover' ? 'active' : ''}
@@ -5570,74 +5160,6 @@ function App() {
                         </button>
                         <button type="submit" disabled={isSavingContactSettings}>
                           {isSavingContactSettings ? 'Kaydediliyor...' : 'Kaydet'}
-                        </button>
-                      </div>
-                    </form>
-                  ) : activeSettingsTab === 'wordpress' ? (
-                    <form className="adminProductForm adminFooterForm" onSubmit={saveWpSourceSettings}>
-                      {wpSourceFields.map((field) => (
-                        <label
-                          className={field.key === 'oldSiteUrl' ? 'adminFormWide' : ''}
-                          key={field.key}
-                        >
-                          {field.label}
-                          <input
-                            type={field.type ?? 'text'}
-                            value={wpSourceSettingsForm[field.key] as string | number}
-                            onChange={(event) => updateWpSourceSettingsForm(field.key, event.target.value)}
-                            placeholder={field.placeholder}
-                            min={field.key === 'port' ? 1 : undefined}
-                            max={field.key === 'port' ? 65535 : undefined}
-                          />
-                          {field.key === 'password' && wpSourceSettings.hasPassword && !wpSourceSettingsForm.password && <small>Şifre kayıtlı.</small>}
-                        </label>
-                      ))}
-
-                      <label className="adminToggleRow adminFormWide">
-                        <span>
-                          Taslak yazıları da dahil et
-                          <small>Import script’i çalıştırıldığında WordPress draft yazılarını panelde taslak olarak alır.</small>
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={wpSourceSettingsForm.includeDrafts}
-                          onChange={(event) => updateWpSourceSettingsForm('includeDrafts', event.target.checked)}
-                        />
-                      </label>
-
-                      {wpSourceTestResult && (
-                        <div className="adminWpTestResult adminFormWide">
-                          <strong className={wpSourceTestResult.connected ? 'success' : 'error'}>
-                            {wpSourceTestResult.connected ? 'Bağlantı başarılı' : 'Bağlantı başarısız'}
-                          </strong>
-                          {wpSourceTestResult.connected ? (
-                            <>
-                              <span>{wpSourceTestResult.totalTables} tablo bulundu.</span>
-                              <span>{wpSourceTestResult.postCount} WordPress yazısı bulundu.</span>
-                              {wpSourceTestResult.tables.length > 0 && (
-                                <small>Tablolar: {wpSourceTestResult.tables.slice(0, 16).join(', ')}</small>
-                              )}
-                              {wpSourceTestResult.seoMetaKeys.length > 0 && (
-                                <small>
-                                  SEO meta: {wpSourceTestResult.seoMetaKeys.map((meta) => meta.meta_key).join(', ')}
-                                </small>
-                              )}
-                            </>
-                          ) : (
-                            <small>{wpSourceTestResult.error ?? 'Bağlantı kurulamadı.'}</small>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="adminFormActions">
-                        <button type="button" onClick={closeSettingsModal}>
-                          Vazgeç
-                        </button>
-                        <button type="button" onClick={testWpSourceSettings} disabled={isTestingWpSourceSettings}>
-                          {isTestingWpSourceSettings ? 'Test ediliyor...' : 'Test Et'}
-                        </button>
-                        <button type="submit" disabled={isSavingWpSourceSettings}>
-                          {isSavingWpSourceSettings ? 'Kaydediliyor...' : 'Kaydet'}
                         </button>
                       </div>
                     </form>
@@ -6277,6 +5799,135 @@ function App() {
             </motion.div>
           )}
 
+          {isReferenceModalOpen && (
+            <motion.div
+              className="adminModalOverlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeReferenceModal}
+            >
+              <motion.section
+                className="adminProductModal adminReferenceModal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="reference-modal-title"
+                initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                onClick={(modalEvent) => modalEvent.stopPropagation()}
+              >
+                <div className="adminModalHeader">
+                  <div>
+                    <p>Referans Yönetimi</p>
+                    <h2 id="reference-modal-title">{editingReferenceKey ? 'Referansı Düzenle' : 'Yeni Referans'}</h2>
+                  </div>
+                  <button type="button" aria-label="Modalı kapat" onClick={closeReferenceModal}>
+                    <X size={20} strokeWidth={2.2} />
+                  </button>
+                </div>
+
+                <form className="adminProductForm adminReferenceForm" onSubmit={saveReference}>
+                  <label>
+                    Kayıt Anahtarı
+                    <input
+                      required
+                      disabled={Boolean(editingReferenceKey)}
+                      value={referenceForm.key}
+                      onChange={(event) => updateReferenceForm('key', event.target.value)}
+                      placeholder="referansAnahtari"
+                    />
+                  </label>
+                  <label>
+                    Sıra
+                    <input
+                      min="0"
+                      step="1"
+                      type="number"
+                      value={referenceForm.sortOrder}
+                      onChange={(event) => updateReferenceForm('sortOrder', event.target.value)}
+                      placeholder="0"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    Başlık
+                    <input
+                      required
+                      value={referenceForm.title}
+                      onChange={(event) => updateReferenceTitle(event.target.value)}
+                      placeholder="Referans adı"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    Detay Bilgi
+                    <textarea
+                      rows={4}
+                      value={referenceForm.description}
+                      onChange={(event) => updateReferenceForm('description', event.target.value)}
+                      placeholder="Hover popover içinde görünecek kısa metin"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    Logo / Görsel
+                    <div className="adminImageUploadControl">
+                      <input
+                        required
+                        value={referenceForm.imageUrl}
+                        onChange={(event) => updateReferenceForm('imageUrl', event.target.value)}
+                        placeholder="https://... veya görsel yükleyin"
+                      />
+                      <input
+                        ref={referenceImageInputRef}
+                        className="adminHiddenFileInput"
+                        type="file"
+                        accept="image/*"
+                        onChange={uploadReferenceImage}
+                      />
+                      <button
+                        type="button"
+                        disabled={isUploadingReferenceImage}
+                        onClick={() => referenceImageInputRef.current?.click()}
+                      >
+                        <Upload size={17} strokeWidth={2.4} />
+                        {isUploadingReferenceImage ? 'Yükleniyor...' : 'Görsel Yükle'}
+                      </button>
+                    </div>
+                    {referenceForm.imageUrl && (
+                      <button
+                        className="adminReferencePreviewButton"
+                        type="button"
+                        onClick={() => setImagePreview({ title: referenceForm.title || 'Referans görseli', url: referenceForm.imageUrl })}
+                      >
+                        <img src={referenceForm.imageUrl} alt="" />
+                        <span>Önizle</span>
+                      </button>
+                    )}
+                  </label>
+
+                  <div className="adminFormActions">
+                    <label className="adminStatusSwitch">
+                      <input
+                        checked={referenceForm.isActive}
+                        type="checkbox"
+                        onChange={(event) => updateReferenceForm('isActive', event.target.checked)}
+                      />
+                      <span />
+                      <strong>{referenceForm.isActive ? 'Yayında' : 'Pasif'}</strong>
+                    </label>
+                    {editingReferenceKey && (
+                      <button className="dangerButton" type="button" onClick={deleteReference}>
+                        Sil
+                      </button>
+                    )}
+                    <button type="button" onClick={closeReferenceModal}>Vazgeç</button>
+                    <button type="submit">{editingReferenceKey ? 'Güncelle' : 'Kaydet'}</button>
+                  </div>
+                </form>
+              </motion.section>
+            </motion.div>
+          )}
+
           {isBlogModalOpen && (
             <motion.div
               className="adminModalOverlay"
@@ -6310,13 +5961,6 @@ function App() {
                   <label>
                     Kayıt Anahtarı
                     <input required disabled={Boolean(editingBlogKey)} value={blogPostForm.key} onChange={(event) => updateBlogPostForm('key', event.target.value)} />
-                  </label>
-                  <label>
-                    Durum
-                    <select value={blogPostForm.status} onChange={(event) => updateBlogPostForm('status', event.target.value as BlogPostFormState['status'])}>
-                      <option value="draft">Taslak</option>
-                      <option value="published">Yayında</option>
-                    </select>
                   </label>
                   <label>
                     Blog Başlığı
@@ -6398,6 +6042,17 @@ function App() {
                     ))}
                   </div>
                   <div className="adminFormActions">
+                    <label className="adminStatusSwitch">
+                      <input
+                        checked={blogPostForm.status === 'published'}
+                        type="checkbox"
+                        onChange={(event) =>
+                          updateBlogPostForm('status', event.target.checked ? 'published' : 'draft')
+                        }
+                      />
+                      <span />
+                      <strong>{blogPostForm.status === 'published' ? 'Yayında' : 'Taslak'}</strong>
+                    </label>
                     {editingBlogKey && (
                       <button className="dangerButton" type="button" onClick={deleteBlogPost}>
                         Sil
@@ -6771,13 +6426,23 @@ function App() {
               ))}
             </section>
 
-            <div className="blogLoadMoreMarker" ref={blogLoadMoreRef} aria-live="polite">
-              {hasMoreBlogPosts
-                ? isLoadingMoreBlogPosts
-                  ? 'Yazılar yükleniyor...'
-                  : 'Aşağı kaydırdıkça daha fazla yazı yüklenecek'
-                : 'Tüm yazılar yüklendi'}
-            </div>
+            <nav className="blogPagination" aria-label="Blog sayfalama">
+              <button
+                type="button"
+                disabled={currentBlogPage === 1 || isLoadingMoreBlogPosts}
+                onClick={() => loadBlogPage(currentBlogPage - 1)}
+              >
+                Önceki
+              </button>
+              <span>Sayfa {currentBlogPage}</span>
+              <button
+                type="button"
+                disabled={!hasMoreBlogPosts || isLoadingMoreBlogPosts}
+                onClick={() => loadBlogPage(currentBlogPage + 1)}
+              >
+                {isLoadingMoreBlogPosts ? 'Yükleniyor...' : 'Sonraki'}
+              </button>
+            </nav>
           </>
         )}
 
@@ -7610,6 +7275,29 @@ function App() {
           </article>
         </div>
       </section>
+
+      {activeSiteReferences.length > 0 && (
+        <section className="referenceSection" id="referanslar">
+          <div className="referenceHeader">
+            <p className="eyebrow">Referanslar</p>
+            <h2>Tecrübemize güvenenler</h2>
+          </div>
+
+          <div className="referenceCloud" aria-label="Referans logoları">
+            <div className="referenceCloudTrack">
+              {[...activeSiteReferences, ...activeSiteReferences].map((reference, index) => (
+                <article className="referenceLogoCard" key={`${reference.key}-${index}`}>
+                  <img src={reference.imageUrl} alt={reference.title} />
+                  <div className="referencePopover">
+                    <strong>{reference.title}</strong>
+                    <p>{reference.description || 'Referans detay metni panelden eklenebilir.'}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       <div className={`floatingContact${isContactMenuOpen ? ' open' : ''}`}>
         <a

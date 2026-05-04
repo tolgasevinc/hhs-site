@@ -86,15 +86,13 @@ type ContactSettingsInput = {
   footerDescription: string;
 };
 
-type WpSourceSettingsInput = {
-  host: string;
-  port: number;
-  database: string;
-  username: string;
-  password?: string;
-  tablePrefix: string;
-  oldSiteUrl: string;
-  includeDrafts?: boolean;
+type SiteReferenceInput = {
+  key: string;
+  title: string;
+  description?: string;
+  imageUrl?: string;
+  sortOrder?: number;
+  isActive?: boolean;
 };
 
 type PushoverSettingsInput = {
@@ -292,19 +290,15 @@ type ContactSettingsRow = {
   footer_description: string;
 };
 
-type WpSourceSettingsRow = {
-  id: string;
-  host: string;
-  port: number;
-  database_name: string;
-  username: string;
-  password: string;
-  table_prefix: string;
-  old_site_url: string;
-  include_drafts: number;
-  last_test_at: string | null;
-  last_test_status: string;
-  last_test_message: string;
+type SiteReferenceRow = {
+  key: string;
+  title: string;
+  description: string;
+  image_url: string;
+  sort_order: number;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
 };
 
 type PushoverSettingsRow = {
@@ -417,11 +411,6 @@ type BlogRedirectRow = {
   status_code: number;
 };
 
-type MysqlConnection = {
-  query: (sql: string) => Promise<[unknown, unknown]>;
-  end: () => Promise<void>;
-};
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
@@ -486,9 +475,9 @@ const getContactSettingsRequestBody = async (request: Request) => {
   }
 };
 
-const getWpSourceSettingsRequestBody = async (request: Request) => {
+const getSiteReferenceRequestBody = async (request: Request) => {
   try {
-    return (await request.json()) as WpSourceSettingsInput;
+    return (await request.json()) as SiteReferenceInput;
   } catch {
     return null;
   }
@@ -579,34 +568,8 @@ const isValidContactSettingsInput = (body: ContactSettingsInput | null): body is
   return Boolean(body && typeof body.phonePrimary === 'string' && typeof body.email === 'string');
 };
 
-const getWpSourceSettingsValidationErrors = (body: WpSourceSettingsInput | null) => {
-  const errors: string[] = [];
-
-  if (!body) {
-    return ['payload'];
-  }
-
-  if (typeof body.host !== 'string' || !body.host.trim()) {
-    errors.push('host');
-  }
-
-  if (typeof body.database !== 'string' || !body.database.trim()) {
-    errors.push('database');
-  }
-
-  if (typeof body.username !== 'string' || !body.username.trim()) {
-    errors.push('username');
-  }
-
-  if (!Number.isInteger(Number(body.port)) || Number(body.port) <= 0 || Number(body.port) > 65535) {
-    errors.push('port');
-  }
-
-  if (!/^[A-Za-z0-9_]*$/.test(body.tablePrefix ?? '')) {
-    errors.push('tablePrefix');
-  }
-
-  return errors;
+const isValidSiteReferenceInput = (body: SiteReferenceInput | null): body is SiteReferenceInput => {
+  return Boolean(body?.key?.trim() && body.title?.trim() && body.imageUrl?.trim());
 };
 
 const isValidServiceRequestInput = (body: ServiceRequestInput | null): body is ServiceRequestInput => {
@@ -721,6 +684,7 @@ const getUsedAssetKeys = async (db: D1Database) => {
       .all<AssetUrlRow>(),
     db.prepare('SELECT image_url FROM blog_posts').all<AssetUrlRow>(),
     db.prepare('SELECT image_url FROM quote_questions').all<AssetUrlRow>(),
+    db.prepare('SELECT image_url FROM site_references').all<AssetUrlRow>(),
     db.prepare('SELECT avatar_url FROM admin_users').all<AssetUrlRow>(),
   ];
   const results = await Promise.all(
@@ -773,6 +737,7 @@ const getAssetReferences = async (db: D1Database, objectKey: string) => {
       .bind(likeValue, likeValue, likeValue, likeValue),
     db.prepare('SELECT title AS label FROM blog_posts WHERE image_url LIKE ?').bind(likeValue),
     db.prepare('SELECT question AS label FROM quote_questions WHERE image_url LIKE ?').bind(likeValue),
+    db.prepare('SELECT title AS label FROM site_references WHERE image_url LIKE ?').bind(likeValue),
     db.prepare('SELECT display_name AS label FROM admin_users WHERE avatar_url LIKE ?').bind(likeValue),
   ];
   const results = await Promise.all(
@@ -1590,120 +1555,6 @@ const upsertContactSettings = async (db: D1Database, settings: ContactSettingsIn
   return getContactSettings(db);
 };
 
-const defaultWpSourceSettings = {
-  host: '',
-  port: 3306,
-  database: '',
-  username: '',
-  tablePrefix: 'wp_',
-  oldSiteUrl: '',
-  includeDrafts: false,
-  hasPassword: false,
-  lastTestAt: '',
-  lastTestStatus: '',
-  lastTestMessage: '',
-};
-
-const mapWpSourceSettings = (settings: WpSourceSettingsRow) => ({
-  host: settings.host,
-  port: settings.port,
-  database: settings.database_name,
-  username: settings.username,
-  password: '',
-  tablePrefix: settings.table_prefix,
-  oldSiteUrl: settings.old_site_url,
-  includeDrafts: Boolean(settings.include_drafts),
-  hasPassword: Boolean(settings.password),
-  lastTestAt: settings.last_test_at ?? '',
-  lastTestStatus: settings.last_test_status,
-  lastTestMessage: settings.last_test_message,
-});
-
-const ensureWpSourceSettingsTable = async (db: D1Database) => {
-  await db
-    .prepare(
-      `CREATE TABLE IF NOT EXISTS wp_source_settings (
-        id TEXT PRIMARY KEY DEFAULT 'default',
-        host TEXT NOT NULL DEFAULT '',
-        port INTEGER NOT NULL DEFAULT 3306,
-        database_name TEXT NOT NULL DEFAULT '',
-        username TEXT NOT NULL DEFAULT '',
-        password TEXT NOT NULL DEFAULT '',
-        table_prefix TEXT NOT NULL DEFAULT 'wp_',
-        old_site_url TEXT NOT NULL DEFAULT '',
-        include_drafts INTEGER NOT NULL DEFAULT 0,
-        last_test_at TEXT,
-        last_test_status TEXT NOT NULL DEFAULT '',
-        last_test_message TEXT NOT NULL DEFAULT '',
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )`,
-    )
-    .run();
-};
-
-const getWpSourceSettingsRow = async (db: D1Database) => {
-  await ensureWpSourceSettingsTable(db);
-  return db
-    .prepare(
-      `SELECT id, host, port, database_name, username, password, table_prefix, old_site_url, include_drafts,
-        last_test_at, last_test_status, last_test_message
-      FROM wp_source_settings
-      WHERE id = 'default'
-      LIMIT 1`,
-    )
-    .first<WpSourceSettingsRow>();
-};
-
-const getWpSourceSettings = async (db: D1Database) => {
-  const settings = await getWpSourceSettingsRow(db);
-  return settings ? mapWpSourceSettings(settings) : defaultWpSourceSettings;
-};
-
-const upsertWpSourceSettings = async (db: D1Database, settings: WpSourceSettingsInput) => {
-  await ensureWpSourceSettingsTable(db);
-  const existing = await getWpSourceSettingsRow(db);
-  const password = settings.password?.trim() || existing?.password || '';
-
-  await db
-    .prepare(
-      `INSERT INTO wp_source_settings (
-        id,
-        host,
-        port,
-        database_name,
-        username,
-        password,
-        table_prefix,
-        old_site_url,
-        include_drafts
-      ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        host = excluded.host,
-        port = excluded.port,
-        database_name = excluded.database_name,
-        username = excluded.username,
-        password = excluded.password,
-        table_prefix = excluded.table_prefix,
-        old_site_url = excluded.old_site_url,
-        include_drafts = excluded.include_drafts,
-        updated_at = CURRENT_TIMESTAMP`,
-    )
-    .bind(
-      settings.host.trim(),
-      Number(settings.port),
-      settings.database.trim(),
-      settings.username.trim(),
-      password,
-      settings.tablePrefix.trim() || 'wp_',
-      settings.oldSiteUrl.trim(),
-      settings.includeDrafts ? 1 : 0,
-    )
-    .run();
-
-  return getWpSourceSettings(db);
-};
-
 const defaultPushoverSettings = {
   userKey: '',
   apiToken: '',
@@ -1816,81 +1667,81 @@ const upsertPushoverSettings = async (db: D1Database, settings: PushoverSettings
   return getPushoverSettings(db);
 };
 
-const quoteMysqlIdentifier = (value: string) => `\`${value.replaceAll('`', '``')}\``;
+const ensureSiteReferencesTable = async (db: D1Database) => {
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS site_references (
+        key TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        image_url TEXT NOT NULL DEFAULT '',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+    )
+    .run();
+};
 
-const testWpSourceSettings = async (db: D1Database, settings: WpSourceSettingsInput) => {
-  const existing = await getWpSourceSettingsRow(db);
-  const password = settings.password?.trim() || existing?.password || '';
-  const tablePrefix = settings.tablePrefix.trim() || 'wp_';
+const mapSiteReference = (reference: SiteReferenceRow) => ({
+  key: reference.key,
+  title: reference.title,
+  description: reference.description,
+  imageUrl: reference.image_url,
+  sortOrder: reference.sort_order,
+  isActive: Boolean(reference.is_active),
+  createdAt: reference.created_at,
+  updatedAt: reference.updated_at,
+});
 
-  try {
-    const mysql = await import('mysql2/promise');
-    const connection = (await mysql.createConnection({
-      host: settings.host.trim(),
-      port: Number(settings.port),
-      user: settings.username.trim(),
-      password,
-      database: settings.database.trim(),
-      connectTimeout: 10000,
-      disableEval: true,
-    })) as unknown as MysqlConnection;
-    const [tableRows] = await connection.query('SHOW TABLES');
-    const tableNames = (tableRows as Record<string, string>[])
-      .map((row) => Object.values(row)[0])
-      .filter((value): value is string => typeof value === 'string');
-    const postsTable = quoteMysqlIdentifier(`${tablePrefix}posts`);
-    const postmetaTable = quoteMysqlIdentifier(`${tablePrefix}postmeta`);
-    const [[postCountRow], [seoMetaRows]] = await Promise.all([
-      connection.query(`SELECT COUNT(*) AS total FROM ${postsTable} WHERE post_type = 'post'`),
-      connection.query(
-        `SELECT meta_key, COUNT(*) AS total
-        FROM ${postmetaTable}
-        WHERE meta_key LIKE '%yoast%' OR meta_key LIKE 'rank_math%' OR meta_key LIKE '_aioseo%'
-        GROUP BY meta_key
-        ORDER BY total DESC
-        LIMIT 20`,
-      ),
-    ]);
+const listSiteReferences = async (db: D1Database, includeInactive = false) => {
+  await ensureSiteReferencesTable(db);
+  const references = await db
+    .prepare(
+      `SELECT key, title, description, image_url, sort_order, is_active, created_at, updated_at
+      FROM site_references
+      ${includeInactive ? '' : 'WHERE is_active = 1'}
+      ORDER BY sort_order ASC, title ASC`,
+    )
+    .all<SiteReferenceRow>();
 
-    await connection.end();
+  return references.results.map(mapSiteReference);
+};
 
-    await db
-      .prepare(
-        `UPDATE wp_source_settings
-        SET last_test_at = CURRENT_TIMESTAMP, last_test_status = 'success', last_test_message = ?
-        WHERE id = 'default'`,
-      )
-      .bind(`${tableNames.length} tablo bulundu.`)
-      .run();
+const upsertSiteReference = async (db: D1Database, reference: SiteReferenceInput, previousKey?: string) => {
+  await ensureSiteReferencesTable(db);
+  const key = previousKey ?? reference.key.trim();
 
-    return {
-      connected: true,
-      tables: tableNames.slice(0, 100),
-      totalTables: tableNames.length,
-      postCount: Number((postCountRow as { total: number }[])[0]?.total ?? 0),
-      seoMetaKeys: seoMetaRows as { meta_key: string; total: number }[],
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'MySQL bağlantısı test edilemedi.';
+  await db
+    .prepare(
+      `INSERT INTO site_references (key, title, description, image_url, sort_order, is_active)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        title = excluded.title,
+        description = excluded.description,
+        image_url = excluded.image_url,
+        sort_order = excluded.sort_order,
+        is_active = excluded.is_active,
+        updated_at = CURRENT_TIMESTAMP`,
+    )
+    .bind(
+      key,
+      reference.title.trim(),
+      reference.description?.trim() ?? '',
+      reference.imageUrl?.trim() ?? '',
+      Number(reference.sortOrder ?? 0),
+      reference.isActive === false ? 0 : 1,
+    )
+    .run();
 
-    await db
-      .prepare(
-        `UPDATE wp_source_settings
-        SET last_test_at = CURRENT_TIMESTAMP, last_test_status = 'error', last_test_message = ?
-        WHERE id = 'default'`,
-      )
-      .bind(message)
-      .run();
+  return listSiteReferences(db, true);
+};
 
-    return {
-      connected: false,
-      tables: [],
-      totalTables: 0,
-      postCount: 0,
-      seoMetaKeys: [],
-      error: message,
-    };
-  }
+const deleteSiteReference = async (db: D1Database, key: string) => {
+  await ensureSiteReferencesTable(db);
+  await db.prepare('DELETE FROM site_references WHERE key = ?').bind(key).run();
+  return listSiteReferences(db, true);
 };
 
 const ensureServiceRequestsTable = async (db: D1Database) => {
@@ -3111,7 +2962,7 @@ export default {
       const safeVariant = toSafeAssetName(imageVariant) || 'original';
       const requestedFolder = url.searchParams.get('folder') ?? '';
       const assetFolder =
-        ['urun', 'kategori', 'blog', 'sayfa'].includes(requestedFolder)
+        ['urun', 'kategori', 'blog', 'sayfa', 'referans'].includes(requestedFolder)
           ? requestedFolder
           : url.pathname.endsWith('/category-image')
           ? 'kategori'
@@ -3296,6 +3147,86 @@ export default {
       }
     }
 
+    if (url.pathname === '/api/references') {
+      if (request.method === 'GET') {
+        const includeInactive = url.searchParams.get('includeInactive') === '1';
+
+        if (includeInactive) {
+          const admin = await authenticateAdmin(request, env.DB);
+
+          if (!admin) {
+            return unauthorized();
+          }
+
+          if (!hasAdminModule(admin, 'settings')) {
+            return forbidden();
+          }
+        }
+
+        return json({
+          ok: true,
+          references: await listSiteReferences(env.DB, includeInactive),
+        });
+      }
+
+      if (request.method === 'POST' || request.method === 'PUT') {
+        const admin = await authenticateAdmin(request, env.DB);
+
+        if (!admin) {
+          return unauthorized();
+        }
+
+        if (!hasAdminModule(admin, 'settings')) {
+          return forbidden();
+        }
+
+        const body = await getSiteReferenceRequestBody(request);
+
+        if (!isValidSiteReferenceInput(body)) {
+          return json({ ok: false, error: 'Invalid reference payload' }, { status: 400 });
+        }
+
+        return json({
+          ok: true,
+          references: await upsertSiteReference(env.DB, body),
+        });
+      }
+    }
+
+    if (url.pathname.startsWith('/api/references/')) {
+      const admin = await authenticateAdmin(request, env.DB);
+
+      if (!admin) {
+        return unauthorized();
+      }
+
+      if (!hasAdminModule(admin, 'settings')) {
+        return forbidden();
+      }
+
+      const key = decodeURIComponent(url.pathname.replace('/api/references/', ''));
+
+      if (request.method === 'PUT') {
+        const body = await getSiteReferenceRequestBody(request);
+
+        if (!isValidSiteReferenceInput(body)) {
+          return json({ ok: false, error: 'Invalid reference payload' }, { status: 400 });
+        }
+
+        return json({
+          ok: true,
+          references: await upsertSiteReference(env.DB, body, key),
+        });
+      }
+
+      if (request.method === 'DELETE') {
+        return json({
+          ok: true,
+          references: await deleteSiteReference(env.DB, key),
+        });
+      }
+    }
+
     if (url.pathname === '/api/quote-questions') {
       if (request.method === 'GET') {
         const includeInactive = url.searchParams.get('includeInactive') === '1';
@@ -3345,79 +3276,6 @@ export default {
           questions: await replaceQuoteQuestions(env.DB, body),
         });
       }
-    }
-
-    if (url.pathname === '/api/wp-source-settings') {
-      const admin = await authenticateAdmin(request, env.DB);
-
-      if (!admin) {
-        return unauthorized();
-      }
-
-      if (!hasAdminModule(admin, 'settings')) {
-        return forbidden();
-      }
-
-      if (request.method === 'GET') {
-        return json({
-          ok: true,
-          settings: await getWpSourceSettings(env.DB),
-        });
-      }
-
-      if (request.method === 'POST' || request.method === 'PUT') {
-        const body = await getWpSourceSettingsRequestBody(request);
-        const validationErrors = getWpSourceSettingsValidationErrors(body);
-
-        if (validationErrors.length > 0 || !body) {
-          return json(
-            {
-              ok: false,
-              error: 'Invalid WordPress source settings payload',
-              fields: validationErrors,
-            },
-            { status: 400 },
-          );
-        }
-
-        return json({
-          ok: true,
-          settings: await upsertWpSourceSettings(env.DB, body),
-        });
-      }
-    }
-
-    if (url.pathname === '/api/wp-source-settings/test' && request.method === 'POST') {
-      const admin = await authenticateAdmin(request, env.DB);
-
-      if (!admin) {
-        return unauthorized();
-      }
-
-      if (!hasAdminModule(admin, 'settings')) {
-        return forbidden();
-      }
-
-      const body = await getWpSourceSettingsRequestBody(request);
-      const validationErrors = getWpSourceSettingsValidationErrors(body);
-
-      if (validationErrors.length > 0 || !body) {
-        return json(
-          {
-            ok: false,
-            error: 'Invalid WordPress source settings payload',
-            fields: validationErrors,
-          },
-          { status: 400 },
-        );
-      }
-
-      const result = await testWpSourceSettings(env.DB, body);
-
-      return json({
-        ok: result.connected,
-        ...result,
-      });
     }
 
     if (url.pathname === '/api/pushover-settings') {
