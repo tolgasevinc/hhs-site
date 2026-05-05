@@ -106,6 +106,10 @@ type SiteServiceInput = {
   title: string;
   summary?: string;
   detail?: string;
+  metaTitle?: string;
+  metaKeywords?: string;
+  metaDescription?: string;
+  iconUrl?: string;
   imageUrl?: string;
   sortOrder?: number;
   isActive?: boolean;
@@ -271,6 +275,7 @@ type AssetUrlRow = {
   image_square_url?: string | null;
   image_horizontal_url?: string | null;
   image_vertical_url?: string | null;
+  icon_url?: string | null;
   avatar_url?: string | null;
 };
 
@@ -328,6 +333,10 @@ type SiteServiceRow = {
   title: string;
   summary: string;
   detail: string;
+  meta_title: string;
+  meta_keywords: string;
+  meta_description: string;
+  icon_url: string;
   image_url: string;
   sort_order: number;
   is_active: number;
@@ -703,7 +712,7 @@ const extractAssetKeyFromUrl = (url: string | null | undefined) => {
   const key = markerIndex >= 0 ? url.slice(markerIndex + assetMarker.length) : url;
   const cleanKey = key.split(/[?#]/)[0]?.trim();
 
-  if (!cleanKey || !cleanKey.match(/\.(webp|png|jpe?g|gif)$/i)) {
+  if (!cleanKey || !cleanKey.match(/\.(webp|png|jpe?g|gif|svg)$/i)) {
     return null;
   }
 
@@ -731,7 +740,7 @@ const getUsedAssetKeys = async (db: D1Database) => {
     db.prepare('SELECT image_url FROM blog_posts').all<AssetUrlRow>(),
     db.prepare('SELECT image_url FROM quote_questions').all<AssetUrlRow>(),
     db.prepare('SELECT image_url FROM site_references').all<AssetUrlRow>(),
-    db.prepare('SELECT image_url FROM site_services').all<AssetUrlRow>(),
+    db.prepare('SELECT image_url, icon_url FROM site_services').all<AssetUrlRow>(),
     db.prepare('SELECT avatar_url FROM admin_users').all<AssetUrlRow>(),
   ];
   const results = await Promise.all(
@@ -752,6 +761,7 @@ const getUsedAssetKeys = async (db: D1Database) => {
         row.image_square_url,
         row.image_horizontal_url,
         row.image_vertical_url,
+        row.icon_url,
         row.avatar_url,
       ].forEach((assetUrl) => {
         const assetKey = extractAssetKeyFromUrl(assetUrl);
@@ -785,7 +795,7 @@ const getAssetReferences = async (db: D1Database, objectKey: string) => {
     db.prepare('SELECT title AS label FROM blog_posts WHERE image_url LIKE ?').bind(likeValue),
     db.prepare('SELECT question AS label FROM quote_questions WHERE image_url LIKE ?').bind(likeValue),
     db.prepare('SELECT title AS label FROM site_references WHERE image_url LIKE ?').bind(likeValue),
-    db.prepare('SELECT title AS label FROM site_services WHERE image_url LIKE ?').bind(likeValue),
+    db.prepare('SELECT title AS label FROM site_services WHERE image_url LIKE ? OR icon_url LIKE ?').bind(likeValue, likeValue),
     db.prepare('SELECT display_name AS label FROM admin_users WHERE avatar_url LIKE ?').bind(likeValue),
   ];
   const results = await Promise.all(
@@ -803,7 +813,7 @@ const getAssetReferences = async (db: D1Database, objectKey: string) => {
 
 const listAssetsWithUsage = async (db: D1Database, assetsBucket: R2Bucket, onlyUnused = false) => {
   const listedAssets = await assetsBucket.list({ limit: 1000 });
-  const imageAssets = listedAssets.objects.filter((asset) => asset.key.match(/\.(webp|png|jpe?g|gif)$/i));
+  const imageAssets = listedAssets.objects.filter((asset) => asset.key.match(/\.(webp|png|jpe?g|gif|svg)$/i));
   const usedAssetKeys = await getUsedAssetKeys(db);
   const assetsWithReferences = await Promise.all(
     imageAssets.map(async (asset) => {
@@ -1809,6 +1819,10 @@ const ensureSiteServicesTable = async (db: D1Database) => {
         title TEXT NOT NULL,
         summary TEXT NOT NULL DEFAULT '',
         detail TEXT NOT NULL DEFAULT '',
+        meta_title TEXT NOT NULL DEFAULT '',
+        meta_keywords TEXT NOT NULL DEFAULT '',
+        meta_description TEXT NOT NULL DEFAULT '',
+        icon_url TEXT NOT NULL DEFAULT '',
         image_url TEXT NOT NULL DEFAULT '',
         sort_order INTEGER NOT NULL DEFAULT 0,
         is_active INTEGER NOT NULL DEFAULT 1,
@@ -1817,6 +1831,25 @@ const ensureSiteServicesTable = async (db: D1Database) => {
       )`,
     )
     .run();
+
+  const columns = await db.prepare('PRAGMA table_info(site_services)').all<{ name: string }>();
+  const columnNames = new Set(columns.results.map((column) => column.name));
+
+  if (!columnNames.has('meta_title')) {
+    await db.prepare("ALTER TABLE site_services ADD COLUMN meta_title TEXT NOT NULL DEFAULT ''").run();
+  }
+
+  if (!columnNames.has('meta_keywords')) {
+    await db.prepare("ALTER TABLE site_services ADD COLUMN meta_keywords TEXT NOT NULL DEFAULT ''").run();
+  }
+
+  if (!columnNames.has('meta_description')) {
+    await db.prepare("ALTER TABLE site_services ADD COLUMN meta_description TEXT NOT NULL DEFAULT ''").run();
+  }
+
+  if (!columnNames.has('icon_url')) {
+    await db.prepare("ALTER TABLE site_services ADD COLUMN icon_url TEXT NOT NULL DEFAULT ''").run();
+  }
 
   const existing = await db.prepare('SELECT COUNT(*) AS count FROM site_services').first<{ count: number }>();
 
@@ -1864,6 +1897,21 @@ const ensureSiteServicesTable = async (db: D1Database) => {
         ),
     ]);
   }
+
+  await db.batch([
+    db
+      .prepare("UPDATE site_services SET icon_url = ? WHERE key = ? AND icon_url = ''")
+      .bind('/service-icons/shopping-cart.svg', 'bahceKapisiMotorlari'),
+    db
+      .prepare("UPDATE site_services SET icon_url = ? WHERE key = ? AND icon_url = ''")
+      .bind('/service-icons/drafting-compass.svg', 'otomatikBariyerSistemleri'),
+    db
+      .prepare("UPDATE site_services SET icon_url = ? WHERE key = ? AND icon_url = ''")
+      .bind('/service-icons/wrench.svg', 'fotoselliKapilar'),
+    db
+      .prepare("UPDATE site_services SET icon_url = ? WHERE key = ? AND icon_url = ''")
+      .bind('/service-icons/pencil-ruler.svg', 'plakaTanimaSistemleri'),
+  ]);
 };
 
 const mapSiteService = (service: SiteServiceRow) => ({
@@ -1871,6 +1919,10 @@ const mapSiteService = (service: SiteServiceRow) => ({
   title: service.title,
   summary: service.summary,
   detail: service.detail,
+  metaTitle: service.meta_title,
+  metaKeywords: service.meta_keywords,
+  metaDescription: service.meta_description,
+  iconUrl: service.icon_url,
   imageUrl: service.image_url,
   sortOrder: service.sort_order,
   isActive: Boolean(service.is_active),
@@ -1882,7 +1934,7 @@ const listSiteServices = async (db: D1Database, includeInactive = false) => {
   await ensureSiteServicesTable(db);
   const services = await db
     .prepare(
-      `SELECT key, title, summary, detail, image_url, sort_order, is_active, created_at, updated_at
+      `SELECT key, title, summary, detail, meta_title, meta_keywords, meta_description, icon_url, image_url, sort_order, is_active, created_at, updated_at
       FROM site_services
       ${includeInactive ? '' : 'WHERE is_active = 1'}
       ORDER BY sort_order ASC, title ASC`,
@@ -1898,12 +1950,16 @@ const upsertSiteService = async (db: D1Database, service: SiteServiceInput, prev
 
   await db
     .prepare(
-      `INSERT INTO site_services (key, title, summary, detail, image_url, sort_order, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO site_services (key, title, summary, detail, meta_title, meta_keywords, meta_description, icon_url, image_url, sort_order, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(key) DO UPDATE SET
         title = excluded.title,
         summary = excluded.summary,
         detail = excluded.detail,
+        meta_title = excluded.meta_title,
+        meta_keywords = excluded.meta_keywords,
+        meta_description = excluded.meta_description,
+        icon_url = excluded.icon_url,
         image_url = excluded.image_url,
         sort_order = excluded.sort_order,
         is_active = excluded.is_active,
@@ -1914,6 +1970,10 @@ const upsertSiteService = async (db: D1Database, service: SiteServiceInput, prev
       service.title.trim(),
       service.summary?.trim() ?? '',
       service.detail?.trim() ?? '',
+      service.metaTitle?.trim() ?? '',
+      service.metaKeywords?.trim() ?? '',
+      service.metaDescription?.trim() ?? '',
+      service.iconUrl?.trim() ?? '',
       service.imageUrl?.trim() ?? '',
       Number(service.sortOrder ?? 0),
       service.isActive === false ? 0 : 1,
@@ -3119,7 +3179,7 @@ export default {
         return unauthorized();
       }
 
-      if (!hasAdminModule(admin, 'products') && !hasAdminModule(admin, 'blog')) {
+      if (!hasAdminModule(admin, 'products') && !hasAdminModule(admin, 'blog') && !hasAdminModule(admin, 'settings')) {
         return forbidden();
       }
 
@@ -3206,6 +3266,55 @@ export default {
       );
     }
 
+    if (url.pathname === '/api/assets/service-icon' && request.method === 'POST') {
+      const admin = await authenticateAdmin(request, env.DB);
+
+      if (!admin) {
+        return unauthorized();
+      }
+
+      if (!hasAdminModule(admin, 'settings')) {
+        return forbidden();
+      }
+
+      const contentType = request.headers.get('content-type') ?? '';
+
+      if (!contentType.includes('image/svg+xml')) {
+        return json({ ok: false, error: 'Only SVG uploads are accepted' }, { status: 400 });
+      }
+
+      const svgBody = await request.text();
+
+      if (!svgBody.trim()) {
+        return json({ ok: false, error: 'SVG body is empty' }, { status: 400 });
+      }
+
+      if (!svgBody.includes('<svg') || /<script[\s>]/i.test(svgBody)) {
+        return json({ ok: false, error: 'Invalid SVG body' }, { status: 400 });
+      }
+
+      const fileName = url.searchParams.get('name') ?? 'service-icon';
+      const safeName = toSafeAssetName(fileName.replace(/\.svg$/i, '')) || 'service-icon';
+      const objectKey = `sayfa/service-icon/${Date.now()}-${crypto.randomUUID()}-${safeName}.svg`;
+
+      await env.ASSETS.put(objectKey, svgBody, {
+        httpMetadata: {
+          contentType: 'image/svg+xml; charset=utf-8',
+          cacheControl: 'public, max-age=31536000, immutable',
+        },
+      });
+
+      return json(
+        {
+          ok: true,
+          key: objectKey,
+          url: `/api/assets/${objectKey}`,
+          size: new TextEncoder().encode(svgBody).byteLength,
+        },
+        { status: 201 },
+      );
+    }
+
     if (url.pathname === '/api/assets/admin-avatar' && request.method === 'POST') {
       const admin = await authenticateAdmin(request, env.DB);
 
@@ -3275,7 +3384,7 @@ export default {
         return unauthorized();
       }
 
-      if (!hasAdminModule(admin, 'products')) {
+      if (!hasAdminModule(admin, 'products') && !hasAdminModule(admin, 'settings')) {
         return forbidden();
       }
 

@@ -1,7 +1,9 @@
-import { type CSSProperties, type ChangeEvent, type DragEvent, type FormEvent, type PointerEvent, type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type ChangeEvent, type DragEvent, type FormEvent, type MouseEvent, type PointerEvent, type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import {
+  Bell,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -15,9 +17,12 @@ import {
   Menu,
   Package,
   Phone,
+  RefreshCw,
   Search,
   Settings,
   ShieldCheck,
+  Scissors,
+  Trash2,
   Upload,
   UserRound,
   X,
@@ -112,6 +117,10 @@ type SiteService = {
   title: string;
   summary: string;
   detail: string;
+  metaTitle: string;
+  metaKeywords: string;
+  metaDescription: string;
+  iconUrl: string;
   imageUrl: string;
   sortOrder: number;
   isActive: boolean;
@@ -133,6 +142,10 @@ type SiteServiceFormState = {
   title: string;
   summary: string;
   detail: string;
+  metaTitle: string;
+  metaKeywords: string;
+  metaDescription: string;
+  iconUrl: string;
   imageUrl: string;
   sortOrder: string;
   isActive: boolean;
@@ -342,6 +355,24 @@ function AdminImageUploadControl({
     </div>
   );
 }
+
+const submitClosestForm = (event: MouseEvent<HTMLButtonElement>) => {
+  event.preventDefault();
+  event.stopPropagation();
+
+  const form = event.currentTarget.closest('form');
+
+  if (!form) {
+    return;
+  }
+
+  if (typeof form.requestSubmit === 'function') {
+    form.requestSubmit();
+    return;
+  }
+
+  form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+};
 
 const defaultCropFocalPoint: CropFocalPoint = { x: 0.5, y: 0.5 };
 
@@ -638,6 +669,10 @@ const emptySiteServiceForm: SiteServiceFormState = {
   title: '',
   summary: '',
   detail: '',
+  metaTitle: '',
+  metaKeywords: '',
+  metaDescription: '',
+  iconUrl: '',
   imageUrl: '',
   sortOrder: '0',
   isActive: true,
@@ -771,6 +806,33 @@ const createProductKeyFromTitle = (title: string) => {
 };
 
 const countWords = (value: string) => value.trim().split(/\s+/).filter(Boolean).length;
+
+const truncateWords = (value: string, wordLimit: number) => {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+
+  if (words.length <= wordLimit) {
+    return value;
+  }
+
+  return `${words.slice(0, wordLimit).join(' ')}...`;
+};
+
+const getServiceSubheadings = (service: SiteService) => {
+  const detailItems = service.detail
+    .split(/\r?\n|[•;]/)
+    .map((item) => item.replace(/^[-–—]\s*/, '').trim())
+    .filter((item) => item.length > 0 && item !== service.detail.trim());
+
+  if (detailItems.length > 0) {
+    return detailItems.slice(0, 6);
+  }
+
+  return service.summary
+    .split(/,\s*|\s+ve\s+/i)
+    .map((item) => item.trim().replace(/\.$/, ''))
+    .filter((item) => item.length > 2)
+    .slice(0, 5);
+};
 
 const countKeywordMatches = (value: string, keyword: string) => {
   const normalizedValue = normalizeTurkishText(value);
@@ -981,6 +1043,7 @@ const createProductImageVariants = async (file: File, focalPoints: CropFocalPoin
 function App() {
   const isPanelPage = window.location.pathname.toLowerCase() === '/panel';
   const isBlogIndexPage = window.location.pathname.toLowerCase() === '/blog';
+  const isServicesPage = window.location.pathname.toLowerCase() === '/hizmetler';
   const blogSlug = window.location.pathname.match(/^\/blog\/([^/]+)$/)?.[1] ?? '';
   const [language, setLanguage] = useState('TR');
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
@@ -1052,9 +1115,14 @@ function App() {
   const [isUploadingQuoteQuestionImage, setIsUploadingQuoteQuestionImage] = useState(false);
   const [isUploadingReferenceImage, setIsUploadingReferenceImage] = useState(false);
   const [isUploadingSiteServiceImage, setIsUploadingSiteServiceImage] = useState(false);
+  const [isUploadingSiteServiceIcon, setIsUploadingSiteServiceIcon] = useState(false);
   const [isUploadingUserAvatar, setIsUploadingUserAvatar] = useState(false);
   const [isConfirmingProductDelete, setIsConfirmingProductDelete] = useState(false);
   const [isConfirmingCategoryDelete, setIsConfirmingCategoryDelete] = useState(false);
+  const [isConfirmingBlogDelete, setIsConfirmingBlogDelete] = useState(false);
+  const [isConfirmingReferenceDelete, setIsConfirmingReferenceDelete] = useState(false);
+  const [isConfirmingSiteServiceDelete, setIsConfirmingSiteServiceDelete] = useState(false);
+  const [confirmingAssetDeleteKey, setConfirmingAssetDeleteKey] = useState('');
   const [isConfirmingUserDisable, setIsConfirmingUserDisable] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('footer');
   const [socialLinkForm, setSocialLinkForm] = useState<Record<string, string>>({});
@@ -1065,6 +1133,7 @@ function App() {
   const [quoteQuestionForm, setQuoteQuestionForm] = useState<QuoteQuestionFormState>(createEmptyQuoteQuestionForm());
   const [quoteAnswers, setQuoteAnswers] = useState<Record<string, string | string[]>>({});
   const [quoteContactForm, setQuoteContactForm] = useState<QuoteContactFormState>(emptyQuoteContactForm);
+  const [isQuotePrivacyAccepted, setIsQuotePrivacyAccepted] = useState(false);
   const [quoteSubmitMessage, setQuoteSubmitMessage] = useState('');
   const [contactSettingsForm, setContactSettingsForm] = useState<ContactSettings>(defaultContactSettings);
   const [pushoverSettingsForm, setPushoverSettingsForm] = useState<PushoverSettings>(defaultPushoverSettings);
@@ -1098,6 +1167,8 @@ function App() {
   const quoteQuestionImageInputRef = useRef<HTMLInputElement>(null);
   const referenceImageInputRef = useRef<HTMLInputElement>(null);
   const siteServiceImageInputRef = useRef<HTMLInputElement>(null);
+  const siteServiceIconInputRef = useRef<HTMLInputElement>(null);
+  const siteServiceFormRef = useRef<HTMLFormElement>(null);
   const cropPointRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const cropPreviewImageRefs = useRef<(HTMLImageElement | null)[]>([]);
   const userAvatarInputRef = useRef<HTMLInputElement>(null);
@@ -1317,11 +1388,21 @@ function App() {
 
       return Array.isArray(answer) ? answer.length === 0 : !answer?.trim();
     });
+  const quotePrimaryContinueDisabledReason = !isQuotePrivacyAccepted
+    ? 'Devam etmek için onay metnini işaretleyin.'
+    : !isQuoteContactComplete
+      ? 'Devam etmek için iletişim bilgilerini tamamlayın.'
+      : '';
+  const isQuotePrimaryContinueDisabled =
+    !isQuoteContactComplete || !isQuotePrivacyAccepted || isSubmittingQuoteRequest;
   const publishedBlogPosts = blogPosts.filter((post) => post.status === 'published');
   const latestBlogPosts = publishedBlogPosts.slice(0, 5);
   const normalizedLatestBlogIndex = latestBlogPosts.length ? activeLatestBlogIndex % latestBlogPosts.length : 0;
   const activeLatestBlogPost = latestBlogPosts[normalizedLatestBlogIndex];
   const blogSeo = calculateBlogSeo(blogPostForm);
+  const homeSiteServices = siteServices.slice(0, 4);
+  const additionalSiteServices = siteServices.slice(4);
+  const hasMoreSiteServices = siteServices.length > homeSiteServices.length;
   const activeSiteReferences = siteReferences.filter((reference) => reference.isActive);
   const openQuoteRequestCount = quoteRequests.filter((request) => request.status !== 'closed').length;
   const openServiceRequestCount = serviceRequests.filter((request) => request.status !== 'closed').length;
@@ -1726,7 +1807,7 @@ function App() {
       }
 
       if (isAssetManagerOpen) {
-        setIsAssetManagerOpen(false);
+        closeAssetManager();
         return;
       }
 
@@ -1838,6 +1919,42 @@ function App() {
     selectedSiteService,
   ]);
 
+  const isAnyModalOpen = Boolean(
+    pendingImageCrop ||
+      selectedCategoryGalleryIndex !== null ||
+      selectedSiteService ||
+      imagePreview ||
+      isAssetManagerOpen ||
+      selectedDatabaseTable ||
+      isSettingsModalOpen ||
+      isUserModalOpen ||
+      isQuoteQuestionModalOpen ||
+      isSiteServiceModalOpen ||
+      isReferenceModalOpen ||
+      isCategoryModalOpen ||
+      isProductModalOpen ||
+      isBlogModalOpen ||
+      isQuoteModalOpen ||
+      isServiceRequestModalOpen,
+  );
+
+  useEffect(() => {
+    if (!isAnyModalOpen) {
+      return;
+    }
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [isAnyModalOpen]);
+
   useEffect(() => {
     if (!adminMessage) {
       return;
@@ -1864,6 +1981,7 @@ function App() {
     setSelectedQuoteProductKey('');
     setQuoteAnswers({});
     setQuoteContactForm(emptyQuoteContactForm);
+    setIsQuotePrivacyAccepted(false);
     setQuoteSubmitMessage('');
     setIsQuoteModalOpen(true);
   }
@@ -1874,6 +1992,7 @@ function App() {
     setSelectedQuoteProductKey('');
     setQuoteAnswers({});
     setQuoteContactForm(emptyQuoteContactForm);
+    setIsQuotePrivacyAccepted(false);
     setQuoteSubmitMessage('');
   }
 
@@ -2100,6 +2219,7 @@ function App() {
   const openNewBlogModal = () => {
     setEditingBlogKey(null);
     setBlogPostForm(createEmptyBlogPostForm(blogCategories[0]?.key ?? ''));
+    setIsConfirmingBlogDelete(false);
     setIsBlogModalOpen(true);
     setAdminMessage('');
   };
@@ -2124,6 +2244,7 @@ function App() {
       categories: post.categories.map((category) => category.key),
       tags: post.tags.map((tag) => tag.title).join(', '),
     });
+    setIsConfirmingBlogDelete(false);
     setIsBlogModalOpen(true);
     setAdminMessage('');
   };
@@ -2131,6 +2252,7 @@ function App() {
   const closeBlogModal = () => {
     setIsBlogModalOpen(false);
     setEditingBlogKey(null);
+    setIsConfirmingBlogDelete(false);
   };
 
   const updateBlogPostForm = (field: keyof BlogPostFormState, value: string | string[]) => {
@@ -2283,6 +2405,7 @@ function App() {
   const openNewReferenceModal = () => {
     setEditingReferenceKey(null);
     setReferenceForm({ ...emptyReferenceForm, key: `ref_${crypto.randomUUID()}` });
+    setIsConfirmingReferenceDelete(false);
     setIsReferenceModalOpen(true);
     setAdminMessage('');
   };
@@ -2297,6 +2420,7 @@ function App() {
       sortOrder: String(reference.sortOrder ?? 0),
       isActive: reference.isActive,
     });
+    setIsConfirmingReferenceDelete(false);
     setIsReferenceModalOpen(true);
     setAdminMessage('');
   };
@@ -2304,6 +2428,7 @@ function App() {
   const closeReferenceModal = () => {
     setIsReferenceModalOpen(false);
     setEditingReferenceKey(null);
+    setIsConfirmingReferenceDelete(false);
   };
 
   const updateReferenceForm = (field: keyof ReferenceFormState, value: string | boolean) => {
@@ -2324,6 +2449,7 @@ function App() {
   const openNewSiteServiceModal = () => {
     setEditingSiteServiceKey(null);
     setSiteServiceForm({ ...emptySiteServiceForm, key: `srv_${crypto.randomUUID()}` });
+    setIsConfirmingSiteServiceDelete(false);
     setIsSiteServiceModalOpen(true);
     setAdminMessage('');
   };
@@ -2335,10 +2461,15 @@ function App() {
       title: service.title,
       summary: service.summary,
       detail: service.detail,
+      metaTitle: service.metaTitle,
+      metaKeywords: service.metaKeywords,
+      metaDescription: service.metaDescription,
+      iconUrl: service.iconUrl,
       imageUrl: service.imageUrl,
       sortOrder: String(service.sortOrder ?? 0),
       isActive: service.isActive,
     });
+    setIsConfirmingSiteServiceDelete(false);
     setIsSiteServiceModalOpen(true);
     setAdminMessage('');
   };
@@ -2346,6 +2477,7 @@ function App() {
   const closeSiteServiceModal = () => {
     setIsSiteServiceModalOpen(false);
     setEditingSiteServiceKey(null);
+    setIsConfirmingSiteServiceDelete(false);
   };
 
   const updateSiteServiceForm = (field: keyof SiteServiceFormState, value: string | boolean) => {
@@ -2416,6 +2548,77 @@ function App() {
     if (file) {
       void uploadSiteServiceImageFile(file);
     }
+  };
+
+  const uploadSiteServiceIconFile = async (file: File) => {
+    if (!file) {
+      return;
+    }
+
+    if (file.type !== 'image/svg+xml' && !file.name.toLowerCase().endsWith('.svg')) {
+      setAdminMessage('Lütfen SVG formatında bir hizmet ikonu seçin.');
+      return;
+    }
+
+    setIsUploadingSiteServiceIcon(true);
+
+    try {
+      const svgText = await file.text();
+      const response = await authorizedFetch(`/api/assets/service-icon?name=${encodeURIComponent(file.name)}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'image/svg+xml',
+        },
+        body: svgText,
+      });
+      const data = (await response.json().catch(() => null)) as { url?: string; size?: number } | null;
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (!response.ok || !data?.url) {
+        setAdminMessage('Hizmet ikonu yüklenemedi.');
+        return;
+      }
+
+      updateSiteServiceForm('iconUrl', data.url.startsWith('/api/') ? apiUrl(data.url) : data.url);
+      setAdminMessage(`Hizmet ikonu yüklendi (${Math.round((data.size ?? svgText.length) / 1024)} KB).`);
+    } catch {
+      setAdminMessage('Hizmet ikonu yüklenemedi.');
+    } finally {
+      setIsUploadingSiteServiceIcon(false);
+    }
+  };
+
+  const uploadSiteServiceIcon = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (file) {
+      void uploadSiteServiceIconFile(file);
+    }
+  };
+
+  const submitSiteServiceForm = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const form = siteServiceFormRef.current;
+
+    if (!form) {
+      setAdminMessage('Hizmet formu bulunamadı. Modalı kapatıp tekrar açın.');
+      return;
+    }
+
+    if (typeof form.requestSubmit === 'function') {
+      form.requestSubmit();
+      return;
+    }
+
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   };
 
   const uploadReferenceImageFile = async (file: File) => {
@@ -2861,6 +3064,7 @@ function App() {
   const reloadAssets = async (mode: 'all' | 'unused' = assetViewMode) => {
     setAssetViewMode(mode);
     setIsLoadingAssets(true);
+    setConfirmingAssetDeleteKey('');
 
     try {
       const response = await authorizedFetch(`/api/assets${mode === 'unused' ? '?unused=1' : ''}`);
@@ -2915,6 +3119,11 @@ function App() {
 
   const showUnusedAssets = () => {
     void reloadAssets('unused');
+  };
+
+  const closeAssetManager = () => {
+    setIsAssetManagerOpen(false);
+    setConfirmingAssetDeleteKey('');
   };
 
   const getAssetUsageLabel = (asset: AssetItem) => {
@@ -2984,6 +3193,12 @@ function App() {
   };
 
   const deleteAsset = async (asset: AssetItem) => {
+    if (confirmingAssetDeleteKey !== asset.key) {
+      setConfirmingAssetDeleteKey(asset.key);
+      setAdminMessage('Görseli silmek için silme ikonuna tekrar tıklayın.');
+      return;
+    }
+
     const response = await authorizedFetch(`/api/assets/${encodeURIComponent(asset.key)}`, {
       method: 'DELETE',
     });
@@ -3008,6 +3223,7 @@ function App() {
     }
 
     setAdminMessage('Görsel silindi.');
+    setConfirmingAssetDeleteKey('');
     await reloadAssets();
   };
 
@@ -3886,6 +4102,12 @@ function App() {
       return;
     }
 
+    if (!isConfirmingBlogDelete) {
+      setIsConfirmingBlogDelete(true);
+      setAdminMessage('Blog yazısını silmek için silme ikonuna tekrar tıklayın.');
+      return;
+    }
+
     const response = await authorizedFetch(`/api/blog-posts/${encodeURIComponent(editingBlogKey)}`, {
       method: 'DELETE',
     });
@@ -3992,6 +4214,7 @@ function App() {
 
     if (!isConfirmingProductDelete) {
       setIsConfirmingProductDelete(true);
+      setAdminMessage('Ürünü silmek için silme ikonuna tekrar tıklayın.');
       return;
     }
 
@@ -4071,6 +4294,7 @@ function App() {
 
     if (!isConfirmingCategoryDelete) {
       setIsConfirmingCategoryDelete(true);
+      setAdminMessage('Kategoriyi silmek için silme ikonuna tekrar tıklayın.');
       return;
     }
 
@@ -4141,6 +4365,12 @@ function App() {
       return;
     }
 
+    if (!isConfirmingReferenceDelete) {
+      setIsConfirmingReferenceDelete(true);
+      setAdminMessage('Referansı silmek için silme ikonuna tekrar tıklayın.');
+      return;
+    }
+
     const response = await authorizedFetch(`/api/references/${encodeURIComponent(editingReferenceKey)}`, {
       method: 'DELETE',
     });
@@ -4170,6 +4400,10 @@ function App() {
       title: siteServiceForm.title.trim(),
       summary: siteServiceForm.summary.trim(),
       detail: siteServiceForm.detail.trim(),
+      metaTitle: siteServiceForm.metaTitle.trim(),
+      metaKeywords: siteServiceForm.metaKeywords.trim(),
+      metaDescription: siteServiceForm.metaDescription.trim(),
+      iconUrl: siteServiceForm.iconUrl.trim(),
       imageUrl: siteServiceForm.imageUrl.trim(),
       sortOrder: parseSortOrder(siteServiceForm.sortOrder),
       isActive: siteServiceForm.isActive,
@@ -4205,6 +4439,12 @@ function App() {
 
   const deleteSiteService = async () => {
     if (!editingSiteServiceKey) {
+      return;
+    }
+
+    if (!isConfirmingSiteServiceDelete) {
+      setIsConfirmingSiteServiceDelete(true);
+      setAdminMessage('Hizmeti silmek için silme ikonuna tekrar tıklayın.');
       return;
     }
 
@@ -4836,8 +5076,13 @@ function App() {
                           <strong>{asset.key}</strong>
                           <span>{getAssetFolderLabel(asset.key)} / {Math.round(asset.size / 1024)} KB</span>
                           <span>{getAssetUsageLabel(asset)}</span>
-                          <button type="button" onClick={() => deleteAsset(asset)}>
-                            Sil
+                          <button
+                            className={confirmingAssetDeleteKey === asset.key ? 'confirmDelete' : ''}
+                            type="button"
+                            aria-label={confirmingAssetDeleteKey === asset.key ? 'Görsel silmeyi onayla' : 'Görseli sil'}
+                            onClick={() => deleteAsset(asset)}
+                          >
+                            <Trash2 size={16} strokeWidth={2.4} />
                           </button>
                         </article>
                       ))}
@@ -5282,8 +5527,8 @@ function App() {
                 </div>
 
                 <div className="adminFormActions">
-                  <button type="button" onClick={() => setSelectedDatabaseTable(null)}>
-                    Kapat
+                  <button type="button" aria-label="Kapat" onClick={() => setSelectedDatabaseTable(null)}>
+                    <X size={18} strokeWidth={2.4} />
                   </button>
                 </div>
               </motion.section>
@@ -5361,11 +5606,12 @@ function App() {
                 </div>
 
                 <div className="adminFormActions">
-                  <button type="button" onClick={closePendingImageCrop}>
-                    Vazgeç
+                  <button type="button" aria-label="Vazgeç" onClick={closePendingImageCrop}>
+                    <X size={18} strokeWidth={2.4} />
                   </button>
                   <button
                     type="button"
+                    aria-label="Kırp ve yükle"
                     onClick={confirmImageCropAndUpload}
                     disabled={
                       pendingImageCrop.assetType === 'product-image'
@@ -5377,21 +5623,7 @@ function App() {
                             : isUploadingCategoryImage
                     }
                   >
-                    {pendingImageCrop.assetType === 'product-image'
-                      ? isUploadingProductImage
-                        ? 'Yükleniyor...'
-                        : 'Kırp ve Yükle'
-                      : pendingImageCrop.assetType === 'blog-image'
-                        ? isUploadingBlogImage
-                          ? 'Yükleniyor...'
-                          : 'Kırp ve Yükle'
-                        : pendingImageCrop.assetType === 'page-image'
-                          ? isUploadingQuoteQuestionImage
-                            ? 'Yükleniyor...'
-                            : 'Kırp ve Yükle'
-                          : isUploadingCategoryImage
-                            ? 'Yükleniyor...'
-                            : 'Kırp ve Yükle'}
+                    <Scissors size={18} strokeWidth={2.4} />
                   </button>
                 </div>
               </motion.section>
@@ -5439,7 +5671,7 @@ function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setIsAssetManagerOpen(false)}
+              onClick={closeAssetManager}
             >
               <motion.section
                 className="adminProductModal adminAssetManagerModal"
@@ -5457,7 +5689,7 @@ function App() {
                     <p>R2 Görselleri</p>
                     <h2 id="asset-manager-title">Görsel Yönetimi</h2>
                   </div>
-                  <button type="button" aria-label="Modalı kapat" onClick={() => setIsAssetManagerOpen(false)}>
+                  <button type="button" aria-label="Modalı kapat" onClick={closeAssetManager}>
                     <X size={20} strokeWidth={2.2} />
                   </button>
                 </div>
@@ -5475,7 +5707,7 @@ function App() {
                             type="button"
                             aria-label={`${asset.key} görselini önizle`}
                             onClick={() => {
-                              setIsAssetManagerOpen(false);
+                              closeAssetManager();
                               setImagePreview({ title: asset.key, url: asset.url });
                             }}
                           >
@@ -5483,8 +5715,13 @@ function App() {
                           </button>
                           <strong>{asset.key}</strong>
                           <span>{Math.round(asset.size / 1024)} KB</span>
-                          <button type="button" onClick={() => deleteAsset(asset)}>
-                            Sil
+                          <button
+                            className={confirmingAssetDeleteKey === asset.key ? 'confirmDelete' : ''}
+                            type="button"
+                            aria-label={confirmingAssetDeleteKey === asset.key ? 'Görsel silmeyi onayla' : 'Görseli sil'}
+                            onClick={() => deleteAsset(asset)}
+                          >
+                            <Trash2 size={16} strokeWidth={2.4} />
                           </button>
                         </article>
                       ))}
@@ -5492,11 +5729,11 @@ function App() {
                   )}
                 </div>
                 <div className="adminFormActions">
-                  <button type="button" onClick={showAllAssets} disabled={isLoadingAssets}>
-                    Yenile
+                  <button type="button" aria-label="Yenile" onClick={showAllAssets} disabled={isLoadingAssets}>
+                    <RefreshCw size={18} strokeWidth={2.4} />
                   </button>
-                  <button type="button" onClick={() => setIsAssetManagerOpen(false)}>
-                    Kapat
+                  <button type="button" aria-label="Kapat" onClick={closeAssetManager}>
+                    <X size={18} strokeWidth={2.4} />
                   </button>
                 </div>
               </motion.section>
@@ -5577,11 +5814,11 @@ function App() {
                       ))}
 
                       <div className="adminFormActions">
-                        <button type="button" onClick={closeSettingsModal}>
-                          Vazgeç
+                        <button type="button" aria-label="Vazgeç" onClick={closeSettingsModal}>
+                          <X size={18} strokeWidth={2.4} />
                         </button>
-                        <button type="submit" disabled={isSavingSocialLinks}>
-                          {isSavingSocialLinks ? 'Kaydediliyor...' : 'Kaydet'}
+                        <button className="adminSaveButton" type="button" aria-label="Kaydet" disabled={isSavingSocialLinks} onClick={submitClosestForm}>
+                          <Check size={18} strokeWidth={2.4} />
                         </button>
                       </div>
                     </form>
@@ -5618,11 +5855,11 @@ function App() {
                       ))}
 
                       <div className="adminFormActions">
-                        <button type="button" onClick={closeSettingsModal}>
-                          Vazgeç
+                        <button type="button" aria-label="Vazgeç" onClick={closeSettingsModal}>
+                          <X size={18} strokeWidth={2.4} />
                         </button>
-                        <button type="submit" disabled={isSavingContactSettings}>
-                          {isSavingContactSettings ? 'Kaydediliyor...' : 'Kaydet'}
+                        <button className="adminSaveButton" type="button" aria-label="Kaydet" disabled={isSavingContactSettings} onClick={submitClosestForm}>
+                          <Check size={18} strokeWidth={2.4} />
                         </button>
                       </div>
                     </form>
@@ -5672,14 +5909,14 @@ function App() {
                       </label>
 
                       <div className="adminFormActions">
-                        <button type="button" onClick={closeSettingsModal}>
-                          Vazgeç
+                        <button type="button" aria-label="Vazgeç" onClick={closeSettingsModal}>
+                          <X size={18} strokeWidth={2.4} />
                         </button>
-                        <button type="button" onClick={sendPushoverTestNotification} disabled={isSendingPushoverTest}>
-                          {isSendingPushoverTest ? 'Gönderiliyor...' : 'Deneme Bildirimi'}
+                        <button type="button" aria-label="Deneme bildirimi gönder" onClick={sendPushoverTestNotification} disabled={isSendingPushoverTest}>
+                          <Bell size={18} strokeWidth={2.4} />
                         </button>
-                        <button type="submit" disabled={isSavingPushoverSettings}>
-                          {isSavingPushoverSettings ? 'Kaydediliyor...' : 'Kaydet'}
+                        <button className="adminSaveButton" type="button" aria-label="Kaydet" disabled={isSavingPushoverSettings} onClick={submitClosestForm}>
+                          <Check size={18} strokeWidth={2.4} />
                         </button>
                       </div>
                     </form>
@@ -5822,16 +6059,17 @@ function App() {
                       <button
                         className={`dangerButton${isConfirmingUserDisable ? ' confirmDelete' : ''}`}
                         type="button"
+                        aria-label={isConfirmingUserDisable ? 'Pasifleştirmeyi onayla' : 'Pasifleştir'}
                         onClick={disableAdminUser}
                       >
-                        {isConfirmingUserDisable ? 'Pasifleştirmeyi onayla' : 'Pasifleştir'}
+                        <Trash2 size={18} strokeWidth={2.4} />
                       </button>
                     )}
-                    <button type="button" onClick={closeUserModal}>
-                      Vazgeç
+                    <button type="button" aria-label="Vazgeç" onClick={closeUserModal}>
+                      <X size={18} strokeWidth={2.4} />
                     </button>
-                    <button type="submit" disabled={isSavingUser}>
-                      {isSavingUser ? 'Kaydediliyor...' : editingUserId ? 'Güncelle' : 'Kaydet'}
+                    <button className="adminSaveButton" type="button" aria-label={editingUserId ? 'Güncelle' : 'Kaydet'} disabled={isSavingUser} onClick={submitClosestForm}>
+                      <Check size={18} strokeWidth={2.4} />
                     </button>
                   </div>
                 </form>
@@ -5973,15 +6211,6 @@ function App() {
                     </select>
                   </label>
 
-                  <label className="adminToggleRow">
-                    <span>Zorunlu</span>
-                    <input
-                      type="checkbox"
-                      checked={quoteQuestionForm.isRequired}
-                      onChange={(event) => updateQuoteQuestionForm('isRequired', event.target.checked)}
-                    />
-                  </label>
-
                   {quoteQuestionForm.answerType === 'text' && (
                     <label>
                       Maksimum karakter
@@ -6037,21 +6266,33 @@ function App() {
                   </label>
 
                   <div className="adminFormActions">
-                    <label className="adminStatusSwitch">
-                      <input
-                        checked={quoteQuestionForm.isActive}
-                        onChange={(event) => updateQuoteQuestionForm('isActive', event.target.checked)}
-                        role="switch"
-                        type="checkbox"
-                      />
-                      <span aria-hidden="true" />
-                      <strong>{quoteQuestionForm.isActive ? 'Aktif' : 'Pasif'}</strong>
-                    </label>
-                    <button type="button" onClick={closeQuoteQuestionModal}>
-                      Vazgeç
+                    <div className="adminFormSwitchGroup">
+                      <label className="adminStatusSwitch">
+                        <input
+                          checked={quoteQuestionForm.isRequired}
+                          onChange={(event) => updateQuoteQuestionForm('isRequired', event.target.checked)}
+                          role="switch"
+                          type="checkbox"
+                        />
+                        <span aria-hidden="true" />
+                        <strong>{quoteQuestionForm.isRequired ? 'Zorunlu' : 'Opsiyonel'}</strong>
+                      </label>
+                      <label className="adminStatusSwitch">
+                        <input
+                          checked={quoteQuestionForm.isActive}
+                          onChange={(event) => updateQuoteQuestionForm('isActive', event.target.checked)}
+                          role="switch"
+                          type="checkbox"
+                        />
+                        <span aria-hidden="true" />
+                        <strong>{quoteQuestionForm.isActive ? 'Aktif' : 'Pasif'}</strong>
+                      </label>
+                    </div>
+                    <button type="button" aria-label="Vazgeç" onClick={closeQuoteQuestionModal}>
+                      <X size={18} strokeWidth={2.4} />
                     </button>
-                    <button type="submit" disabled={isSavingQuoteQuestions}>
-                      {isSavingQuoteQuestions ? 'Kaydediliyor...' : editingQuoteQuestionId ? 'Güncelle' : 'Kaydet'}
+                    <button className="adminSaveButton" type="button" aria-label={editingQuoteQuestionId ? 'Güncelle' : 'Kaydet'} disabled={isSavingQuoteQuestions} onClick={submitClosestForm}>
+                      <Check size={18} strokeWidth={2.4} />
                     </button>
                   </div>
                 </form>
@@ -6237,15 +6478,18 @@ function App() {
                         <button
                           className={`dangerButton${isConfirmingCategoryDelete ? ' confirmDelete' : ''}`}
                           type="button"
+                          aria-label={isConfirmingCategoryDelete ? 'Silme işlemini onayla' : 'Sil'}
                           onClick={deleteCategory}
                         >
-                          {isConfirmingCategoryDelete ? 'Silme işlemini onayla' : 'Sil'}
+                          <Trash2 size={18} strokeWidth={2.4} />
                         </button>
                       )}
-                      <button type="button" onClick={closeCategoryModal}>
-                        Kapat
+                      <button type="button" aria-label="Kapat" onClick={closeCategoryModal}>
+                        <X size={18} strokeWidth={2.4} />
                       </button>
-                      <button type="submit">{editingCategoryKey ? 'Güncelle' : 'Kaydet'}</button>
+                      <button className="adminSaveButton" type="button" aria-label={editingCategoryKey ? 'Güncelle' : 'Kaydet'} onClick={submitClosestForm}>
+                        <Check size={18} strokeWidth={2.4} />
+                      </button>
                     </div>
                   </form>
                 </div>
@@ -6282,7 +6526,7 @@ function App() {
                   </button>
                 </div>
 
-                <form className="adminProductForm adminReferenceForm" onSubmit={saveSiteService}>
+                <form ref={siteServiceFormRef} className="adminProductForm adminReferenceForm" onSubmit={saveSiteService}>
                   <label>
                     Kayıt Anahtarı
                     <input
@@ -6333,6 +6577,52 @@ function App() {
                       placeholder="Modal içinde gösterilecek detaylı metin"
                     />
                   </label>
+                  <label>
+                    SEO Başlık
+                    <input
+                      value={siteServiceForm.metaTitle}
+                      onChange={(event) => updateSiteServiceForm('metaTitle', event.target.value)}
+                      placeholder="Arama motoru başlığı"
+                    />
+                  </label>
+                  <label>
+                    Anahtar Kelimeler
+                    <input
+                      value={siteServiceForm.metaKeywords}
+                      onChange={(event) => updateSiteServiceForm('metaKeywords', event.target.value)}
+                      placeholder="kelime, kelime grubu"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    SEO Açıklama
+                    <textarea
+                      value={siteServiceForm.metaDescription}
+                      onChange={(event) => updateSiteServiceForm('metaDescription', event.target.value)}
+                      placeholder="Arama sonucu açıklama metni"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    İkon
+                    <div className="adminServiceIconUpload">
+                      {siteServiceForm.iconUrl && (
+                        <span
+                          className="serviceIconMask adminServiceIconPreview"
+                          style={{ '--service-icon-url': `url("${siteServiceForm.iconUrl}")` } as CSSProperties}
+                          aria-hidden="true"
+                        />
+                      )}
+                      <AdminImageUploadControl
+                        value={siteServiceForm.iconUrl}
+                        onUrlChange={(value) => updateSiteServiceForm('iconUrl', value)}
+                        inputRef={siteServiceIconInputRef}
+                        onFileInputChange={uploadSiteServiceIcon}
+                        onFileDrop={uploadSiteServiceIconFile}
+                        buttonLabel={isUploadingSiteServiceIcon ? 'Yükleniyor...' : 'SVG Yükle'}
+                        disabled={isUploadingSiteServiceIcon}
+                        placeholder="/service-icons/... veya SVG sürükle bırak"
+                      />
+                    </div>
+                  </label>
                   <label className="adminFormWide">
                     Görsel
                     <AdminImageUploadControl
@@ -6370,12 +6660,21 @@ function App() {
                       <strong>{siteServiceForm.isActive ? 'Yayında' : 'Pasif'}</strong>
                     </label>
                     {editingSiteServiceKey && (
-                      <button className="dangerButton" type="button" onClick={deleteSiteService}>
-                        Sil
+                      <button
+                        className={`dangerButton${isConfirmingSiteServiceDelete ? ' confirmDelete' : ''}`}
+                        type="button"
+                        aria-label={isConfirmingSiteServiceDelete ? 'Silme işlemini onayla' : 'Sil'}
+                        onClick={deleteSiteService}
+                      >
+                        <Trash2 size={18} strokeWidth={2.4} />
                       </button>
                     )}
-                    <button type="button" onClick={closeSiteServiceModal}>Vazgeç</button>
-                    <button type="submit">{editingSiteServiceKey ? 'Güncelle' : 'Kaydet'}</button>
+                    <button type="button" aria-label="Vazgeç" onClick={closeSiteServiceModal}>
+                      <X size={18} strokeWidth={2.4} />
+                    </button>
+                    <button className="adminSaveButton" type="button" aria-label={editingSiteServiceKey ? 'Güncelle' : 'Kaydet'} onClick={submitSiteServiceForm}>
+                      <Check size={18} strokeWidth={2.4} />
+                    </button>
                   </div>
                 </form>
               </motion.section>
@@ -6487,12 +6786,21 @@ function App() {
                       <strong>{referenceForm.isActive ? 'Yayında' : 'Pasif'}</strong>
                     </label>
                     {editingReferenceKey && (
-                      <button className="dangerButton" type="button" onClick={deleteReference}>
-                        Sil
+                      <button
+                        className={`dangerButton${isConfirmingReferenceDelete ? ' confirmDelete' : ''}`}
+                        type="button"
+                        aria-label={isConfirmingReferenceDelete ? 'Silme işlemini onayla' : 'Sil'}
+                        onClick={deleteReference}
+                      >
+                        <Trash2 size={18} strokeWidth={2.4} />
                       </button>
                     )}
-                    <button type="button" onClick={closeReferenceModal}>Vazgeç</button>
-                    <button type="submit">{editingReferenceKey ? 'Güncelle' : 'Kaydet'}</button>
+                    <button type="button" aria-label="Vazgeç" onClick={closeReferenceModal}>
+                      <X size={18} strokeWidth={2.4} />
+                    </button>
+                    <button className="adminSaveButton" type="button" aria-label={editingReferenceKey ? 'Güncelle' : 'Kaydet'} onClick={submitClosestForm}>
+                      <Check size={18} strokeWidth={2.4} />
+                    </button>
                   </div>
                 </form>
               </motion.section>
@@ -6627,15 +6935,24 @@ function App() {
                       <strong>{blogPostForm.status === 'published' ? 'Yayında' : 'Taslak'}</strong>
                     </label>
                     {editingBlogKey && (
-                      <button className="dangerButton" type="button" onClick={deleteBlogPost}>
-                        Sil
+                      <button
+                        className={`dangerButton${isConfirmingBlogDelete ? ' confirmDelete' : ''}`}
+                        type="button"
+                        aria-label={isConfirmingBlogDelete ? 'Silme işlemini onayla' : 'Sil'}
+                        onClick={deleteBlogPost}
+                      >
+                        <Trash2 size={18} strokeWidth={2.4} />
                       </button>
                     )}
                     <span className={`adminSeoFooterScore ${blogSeo.score >= 85 ? 'good' : blogSeo.score >= 60 ? 'medium' : 'bad'}`}>
                       SEO %{blogSeo.score}
                     </span>
-                    <button type="button" onClick={closeBlogModal}>Vazgeç</button>
-                    <button type="submit">{editingBlogKey ? 'Güncelle' : 'Kaydet'}</button>
+                    <button type="button" aria-label="Vazgeç" onClick={closeBlogModal}>
+                      <X size={18} strokeWidth={2.4} />
+                    </button>
+                    <button className="adminSaveButton" type="button" aria-label={editingBlogKey ? 'Güncelle' : 'Kaydet'} onClick={submitClosestForm}>
+                      <Check size={18} strokeWidth={2.4} />
+                    </button>
                   </div>
                 </form>
               </motion.section>
@@ -6828,15 +7145,18 @@ function App() {
                       <button
                         className={`dangerButton${isConfirmingProductDelete ? ' confirmDelete' : ''}`}
                         type="button"
+                        aria-label={isConfirmingProductDelete ? 'Silme işlemini onayla' : 'Sil'}
                         onClick={deleteProduct}
                       >
-                        {isConfirmingProductDelete ? 'Silme işlemini onayla' : 'Sil'}
+                        <Trash2 size={18} strokeWidth={2.4} />
                       </button>
                     )}
-                    <button type="button" onClick={closeProductModal}>
-                      Vazgeç
+                    <button type="button" aria-label="Vazgeç" onClick={closeProductModal}>
+                      <X size={18} strokeWidth={2.4} />
                     </button>
-                    <button type="submit">{editingProductKey ? 'Güncelle' : 'Kaydet'}</button>
+                    <button className="adminSaveButton" type="button" aria-label={editingProductKey ? 'Güncelle' : 'Kaydet'} onClick={submitClosestForm}>
+                      <Check size={18} strokeWidth={2.4} />
+                    </button>
                   </div>
                 </form>
               </motion.section>
@@ -6871,6 +7191,330 @@ function App() {
             </>
           )}
         </article>
+      </main>
+    );
+  }
+
+  if (isServicesPage) {
+    return (
+      <main className="page servicesPage">
+        <header className="siteHeader">
+          <motion.a
+            className="logoLink"
+            href="/"
+            aria-label="HHS Otomatik Kapı ana sayfa"
+            initial={{
+              opacity: 0,
+              width: 8,
+              height: 8,
+              borderRadius: 999,
+              y: -8,
+            }}
+            animate={{
+              opacity: 1,
+              width: [8, 52, 92],
+              height: [8, 52, 52],
+              borderRadius: [999, 999, 6],
+              y: 0,
+            }}
+            transition={{
+              duration: 0.9,
+              ease: 'easeInOut',
+              times: [0, 0.48, 1],
+            }}
+          >
+            <motion.img
+              src="/apple-touch-icon.png"
+              alt="HHS Otomatik Kapı"
+              initial={{ opacity: 0, scale: 0.72 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.35, delay: 0.58, ease: 'easeOut' }}
+            />
+          </motion.a>
+
+          <div className="headerCenter">
+            <motion.a
+              className="headerQuoteButton"
+              href="/#iletisim"
+              initial={headerItemAnimation.initial}
+              animate={headerItemAnimation.animate}
+              transition={{ duration: 0.45, delay: 0.95, ease: 'easeOut' }}
+            >
+              Teklif Al
+            </motion.a>
+          </div>
+
+          <nav className="headerActions" aria-label="Üst menü">
+            <motion.button
+              className="iconButton"
+              type="button"
+              aria-label="Ara"
+              initial={headerItemAnimation.initial}
+              animate={headerItemAnimation.animate}
+              transition={{ duration: 0.45, delay: 0.95, ease: 'easeOut' }}
+            >
+              <Search size={22} strokeWidth={2.2} />
+            </motion.button>
+
+            <motion.div
+              className="languageButton"
+              initial={headerItemAnimation.initial}
+              animate={headerItemAnimation.animate}
+              transition={{ duration: 0.45, delay: 1.08, ease: 'easeOut' }}
+            >
+              <select
+                aria-label="Dil seçimi"
+                value={language}
+                onChange={(event) => setLanguage(event.target.value)}
+              >
+                {languages.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={18} strokeWidth={2.3} />
+            </motion.div>
+
+            <motion.button
+              className="iconButton"
+              type="button"
+              aria-label="Menüyü aç"
+              onClick={() => setIsHeaderMenuOpen((isOpen) => !isOpen)}
+              initial={headerItemAnimation.initial}
+              animate={headerItemAnimation.animate}
+              transition={{ duration: 0.45, delay: 1.21, ease: 'easeOut' }}
+            >
+              <Menu size={28} strokeWidth={2.2} />
+            </motion.button>
+          </nav>
+
+          <AnimatePresence>
+            {isHeaderMenuOpen && (
+              <motion.nav
+                className="headerMenuPanel"
+                aria-label="Ana menü"
+                initial={{ opacity: 0, y: -10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                transition={{ duration: 0.18 }}
+              >
+                <a href="/" onClick={() => setIsHeaderMenuOpen(false)}>Ana Sayfa</a>
+                <a href="/hizmetler" onClick={() => setIsHeaderMenuOpen(false)}>Hizmetler</a>
+                <a href="/blog" onClick={() => setIsHeaderMenuOpen(false)}>Blog</a>
+                <a href="/#iletisim" onClick={() => setIsHeaderMenuOpen(false)}>İletişim</a>
+              </motion.nav>
+            )}
+          </AnimatePresence>
+        </header>
+
+        <section className="servicesPageHero">
+          <a className="blogBackLink" href="/">Ana sayfaya dön</a>
+          <p className="eyebrow">Hizmetler</p>
+          <h1>Otomatik kapı ve geçiş sistemlerinde tüm hizmet alanlarımız</h1>
+          <p>
+            Ana sayfada öne çıkan hizmet kartlarımızın tamamını ve devamındaki uzmanlık alanlarımızı burada
+            inceleyebilirsiniz.
+          </p>
+        </section>
+
+        {siteServices.length === 0 ? (
+          <section className="blogIndexEmpty servicesPageEmpty">
+            <h2>Henüz yayında hizmet bulunmuyor.</h2>
+            <p>Hizmet içerikleri panelden eklendiğinde bu sayfada listelenecek.</p>
+          </section>
+        ) : (
+          <section className="services servicesPageServices" aria-label="Tüm hizmet alanları">
+            <div className="servicesPageMainList">
+              {homeSiteServices.map((service) => {
+                const subheadings = getServiceSubheadings(service);
+
+                return (
+                  <article className="serviceMainCard" key={service.key}>
+                    <div className="serviceMainCardContent">
+                      <button
+                        className="serviceMainCardTitle"
+                        type="button"
+                        onClick={() => setSelectedSiteService(service)}
+                      >
+                        <span>
+                          {service.iconUrl && (
+                            <span
+                              className="serviceIconMask"
+                              style={{ '--service-icon-url': `url("${service.iconUrl}")` } as CSSProperties}
+                              aria-hidden="true"
+                            />
+                          )}
+                          <span>{service.title}</span>
+                        </span>
+                        <small>Detayı görüntüle</small>
+                      </button>
+                      <p>{service.summary}</p>
+                      {subheadings.length > 0 && (
+                        <div className="serviceSubheadingList" aria-label={`${service.title} alt başlıkları`}>
+                          {subheadings.map((subheading) => (
+                            <span key={subheading}>{subheading}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {service.imageUrl && <img className="serviceMainCardImage" src={service.imageUrl} alt={service.title} />}
+                  </article>
+                );
+              })}
+            </div>
+
+            {additionalSiteServices.length > 0 && (
+              <div className="serviceAdditionalSection">
+                <h2>Diğer Alt Hizmet Başlıkları</h2>
+                <div className="serviceAdditionalList">
+                  {additionalSiteServices.map((service) => (
+                    <button type="button" key={service.key} onClick={() => setSelectedSiteService(service)}>
+                      {service.iconUrl && (
+                        <span
+                          className="serviceIconMask"
+                          style={{ '--service-icon-url': `url("${service.iconUrl}")` } as CSSProperties}
+                          aria-hidden="true"
+                        />
+                      )}
+                      <span>{service.title}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        <AnimatePresence>
+          {selectedSiteService && (
+            <motion.div
+              className="quoteModalOverlay serviceDetailOverlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22 }}
+              onClick={() => setSelectedSiteService(null)}
+            >
+              <motion.section
+                className="quoteModal serviceDetailModal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="service-detail-title"
+                initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                transition={{ type: 'spring', stiffness: 190, damping: 24 }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  className="quoteModalClose"
+                  type="button"
+                  aria-label="Hizmet detayını kapat"
+                  onClick={() => setSelectedSiteService(null)}
+                >
+                  <X size={22} strokeWidth={2.2} />
+                </button>
+
+                <div className="quoteModalContent serviceDetailContent">
+                  <p className="quoteModalEyebrow">Hizmet Alanı</p>
+                  <h2 id="service-detail-title" className="serviceDetailTitle">
+                    {selectedSiteService.iconUrl && (
+                      <span
+                        className="serviceIconMask"
+                        style={{ '--service-icon-url': `url("${selectedSiteService.iconUrl}")` } as CSSProperties}
+                        aria-hidden="true"
+                      />
+                    )}
+                    <span>{selectedSiteService.title}</span>
+                  </h2>
+                  {selectedSiteService.imageUrl && (
+                    <img src={selectedSiteService.imageUrl} alt={selectedSiteService.title} />
+                  )}
+                  <strong>{selectedSiteService.summary}</strong>
+                  <p>{selectedSiteService.detail}</p>
+                </div>
+              </motion.section>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <footer className="siteFooter">
+          <div className="footerBrand">
+            <a className="footerLogo" href="/" aria-label="HHS Otomatik Kapı ana sayfa">
+              <img src="/apple-touch-icon.png" alt="HHS Otomatik Kapı" />
+            </a>
+            <p>{contactSettings.footerDescription}</p>
+          </div>
+
+          <div className="footerColumn">
+            <h2>İletişim</h2>
+            <a className="footerContactLink" href={phonePrimaryHref}>
+              <span>
+                <Phone size={15} strokeWidth={2.4} />
+              </span>
+              {contactSettings.phonePrimary}
+            </a>
+            {contactSettings.phoneSecondary && (
+              <a className="footerContactLink" href={phoneSecondaryHref}>
+                <span>
+                  <Phone size={15} strokeWidth={2.4} />
+                </span>
+                {contactSettings.phoneSecondary}
+              </a>
+            )}
+            <a className="footerContactLink" href={whatsappHref} target="_blank" rel="noopener noreferrer">
+              <span>
+                <img src="https://cdn.simpleicons.org/whatsapp/25d366" alt="" />
+              </span>
+              {contactSettings.whatsapp}
+            </a>
+            <a className="footerContactLink" href={emailHref}>
+              <span>
+                <Mail size={15} strokeWidth={2.4} />
+              </span>
+              {contactSettings.email}
+            </a>
+          </div>
+
+          <div className="footerColumn">
+            <h2>Sayfalar</h2>
+            <a href="/">Ana Sayfa</a>
+            <a href="/hizmetler">Hizmetler</a>
+            <a href="/#referanslar">Referanslar</a>
+            <a href="/#iletisim">İletişim</a>
+          </div>
+
+          <div className="footerColumn">
+            <h2>Sosyal Medya</h2>
+            <div className="footerSocialLinks">
+              {socialPlatforms.map((platform) => {
+                const link = socialLinks.find((item) => item.platform === platform.platform);
+
+                if (link && !link.isActive) {
+                  return null;
+                }
+
+                return (
+                  <a href={link?.url || platform.defaultUrl} key={platform.platform} target="_blank" rel="noreferrer">
+                    <span>
+                      <img src={platform.iconUrl} alt="" />
+                    </span>
+                    {link?.label ?? platform.label}
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="footerBottom">
+            <span>© 2026 HHS Otomatik Kapı. Tüm hakları saklıdır.</span>
+            <a href="/panel" target="_blank" rel="noreferrer">
+              Yönetim Paneli
+            </a>
+          </div>
+        </footer>
       </main>
     );
   }
@@ -6980,7 +7624,7 @@ function App() {
                 transition={{ duration: 0.18 }}
               >
                 <a href="/" onClick={() => setIsHeaderMenuOpen(false)}>Ana Sayfa</a>
-                <a href="/#hizmetler" onClick={() => setIsHeaderMenuOpen(false)}>Hizmetler</a>
+                <a href="/hizmetler" onClick={() => setIsHeaderMenuOpen(false)}>Hizmetler</a>
                 <a href="/blog" onClick={() => setIsHeaderMenuOpen(false)}>Blog</a>
                 <a href="/#iletisim" onClick={() => setIsHeaderMenuOpen(false)}>İletişim</a>
               </motion.nav>
@@ -7075,7 +7719,7 @@ function App() {
           <div className="footerColumn">
             <h2>Sayfalar</h2>
             <a href="/">Ana Sayfa</a>
-            <a href="/#hizmetler">Hizmetler</a>
+            <a href="/hizmetler">Hizmetler</a>
             <a href="/#referanslar">Referanslar</a>
             <a href="/#iletisim">İletişim</a>
           </div>
@@ -7230,7 +7874,7 @@ function App() {
                 transition={{ duration: 0.18 }}
               >
                 <a href="/" onClick={() => setIsHeaderMenuOpen(false)}>Ana Sayfa</a>
-                <a href="#hizmetler" onClick={() => setIsHeaderMenuOpen(false)}>Hizmetler</a>
+                <a href="/hizmetler" onClick={() => setIsHeaderMenuOpen(false)}>Hizmetler</a>
                 <a href="/blog" onClick={() => setIsHeaderMenuOpen(false)}>Blog</a>
                 <a href="#iletisim" onClick={() => setIsHeaderMenuOpen(false)}>İletişim</a>
               </motion.nav>
@@ -7499,6 +8143,14 @@ function App() {
                 )}
 
                 <div className="quoteModalActions">
+                  <label className="quotePrivacyConsent">
+                    <input
+                      type="checkbox"
+                      checked={isQuotePrivacyAccepted}
+                      onChange={(event) => setIsQuotePrivacyAccepted(event.target.checked)}
+                    />
+                    <span>Kişisel verilerimin, teklif verilmek üzere kullanılmasını kabul ediyorum.</span>
+                  </label>
                   {selectedQuoteCategory && (
                     <button
                       type="button"
@@ -7513,7 +8165,20 @@ function App() {
                   )}
                   {selectedQuoteProduct ? (
                     isQuoteContinueDisabled ? (
-                      <button type="button" disabled>
+                      <button
+                        type="button"
+                        disabled
+                        data-disabled-reason={
+                          !isQuotePrivacyAccepted
+                            ? 'Onay beklendiği için pasif.'
+                            : 'Zorunlu sorular tamamlanmadığı için pasif.'
+                        }
+                        title={
+                          !isQuotePrivacyAccepted
+                            ? 'Devam etmek için onay metnini işaretleyin.'
+                            : 'Devam etmek için zorunlu soruları tamamlayın.'
+                        }
+                      >
                         Devam Et
                       </button>
                     ) : (
@@ -7521,14 +8186,24 @@ function App() {
                         <button
                           className="secondary"
                           type="button"
-                          disabled={isSubmittingQuoteRequest}
+                          disabled={!isQuotePrivacyAccepted || isSubmittingQuoteRequest}
+                          data-disabled-reason={!isQuotePrivacyAccepted ? 'Onay beklendiği için pasif.' : undefined}
+                          title={!isQuotePrivacyAccepted ? 'Devam etmek için onay metnini işaretleyin.' : undefined}
                           onClick={() => submitQuoteRequest(true)}
                         >
                           İsimsiz Devam Et
                         </button>
                         <button
                           type="button"
-                          disabled={!isQuoteContactComplete || isSubmittingQuoteRequest}
+                          disabled={isQuotePrimaryContinueDisabled}
+                          data-disabled-reason={
+                            !isQuotePrivacyAccepted
+                              ? 'Onay beklendiği için pasif.'
+                              : !isQuoteContactComplete
+                                ? 'İletişim bilgileri eksik olduğu için pasif.'
+                                : undefined
+                          }
+                          title={quotePrimaryContinueDisabledReason || undefined}
                           onClick={() => submitQuoteRequest(false)}
                         >
                           {isSubmittingQuoteRequest ? 'Kaydediliyor...' : 'Devam Et'}
@@ -7830,13 +8505,30 @@ function App() {
         )}
       </AnimatePresence>
 
-      <section className="services">
-        <h2>Hizmet Alanları</h2>
+      <section className="services" id="hizmetler">
+        <div className="servicesHeader">
+          <h2>Hizmet Alanları</h2>
+          {hasMoreSiteServices && (
+            <a className="servicesAllLink" href="/hizmetler">
+              Tüm hizmetleri görüntüle
+            </a>
+          )}
+        </div>
         <div className="grid">
-          {siteServices.map((service) => (
+          {homeSiteServices.map((service) => (
             <button className="serviceAreaCard" type="button" key={service.key} onClick={() => setSelectedSiteService(service)}>
-              <h3>{service.title}</h3>
-              <p>{service.summary}</p>
+              <h3>
+                {service.iconUrl && (
+                  <span
+                    className="serviceIconMask"
+                    style={{ '--service-icon-url': `url("${service.iconUrl}")` } as CSSProperties}
+                    aria-hidden="true"
+                  />
+                )}
+                <span>{service.title}</span>
+              </h3>
+              <p>{truncateWords(service.summary, 18)}</p>
+              {service.imageUrl && <img className="serviceAreaCardImage" src={service.imageUrl} alt={service.title} />}
             </button>
           ))}
         </div>
@@ -7873,11 +8565,20 @@ function App() {
               </button>
 
               <div className="quoteModalContent serviceDetailContent">
+                <p className="quoteModalEyebrow">Hizmet Alanı</p>
+                <h2 id="service-detail-title" className="serviceDetailTitle">
+                  {selectedSiteService.iconUrl && (
+                    <span
+                      className="serviceIconMask"
+                      style={{ '--service-icon-url': `url("${selectedSiteService.iconUrl}")` } as CSSProperties}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span>{selectedSiteService.title}</span>
+                </h2>
                 {selectedSiteService.imageUrl && (
                   <img src={selectedSiteService.imageUrl} alt={selectedSiteService.title} />
                 )}
-                <p className="quoteModalEyebrow">Hizmet Alanı</p>
-                <h2 id="service-detail-title">{selectedSiteService.title}</h2>
                 <strong>{selectedSiteService.summary}</strong>
                 <p>{selectedSiteService.detail}</p>
               </div>
@@ -8107,7 +8808,7 @@ function App() {
         <div className="footerColumn">
           <h2>Sayfalar</h2>
           <a href="/">Ana Sayfa</a>
-          <a href="#hizmetler">Hizmetler</a>
+          <a href="/hizmetler">Hizmetler</a>
           <a href="#referanslar">Referanslar</a>
           <a href="#iletisim">İletişim</a>
         </div>
