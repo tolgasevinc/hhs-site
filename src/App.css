@@ -702,7 +702,7 @@ input[type='radio'] {
 .adminReferenceCard img {
   object-fit: contain;
   padding: 22px;
-  background: #f8f9fc;
+  background: #e5e7eb;
 }
 
 .adminReferenceCard.passive {
@@ -718,6 +718,20 @@ input[type='radio'] {
 .adminReferenceCard.passive span {
   background: rgba(114, 114, 114, 0.14);
   color: var(--color-dark-gray);
+}
+
+.adminServiceCard img,
+.adminServiceImagePlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
+  background: #e5e7eb;
+  color: var(--color-dark-gray);
+  font-size: 13px;
+  font-weight: 900;
 }
 
 .adminReferencePreviewButton {
@@ -739,6 +753,9 @@ input[type='radio'] {
   width: 74px;
   height: 44px;
   object-fit: contain;
+  padding: 6px;
+  border-radius: 10px;
+  background: #e5e7eb;
 }
 
 .adminBlogImageFallback {
@@ -2160,13 +2177,27 @@ input[type='radio'] {
 }
 
 .adminImageUploadControl {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
+  padding: 3px;
+  border: 1px dashed rgba(37, 54, 105, 0.2);
+  border-radius: 16px;
+  background: #f8f9fc;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.adminImageUploadControl:hover,
+.adminImageUploadControl:focus-within {
+  border-color: rgba(240, 128, 26, 0.5);
+  background: rgba(240, 128, 26, 0.06);
 }
 
 .adminProductForm .adminImageUploadControl input:not([type='file']) {
-  border-radius: 14px 0 0 14px;
+  border-color: transparent;
+  border-radius: 12px 0 0 12px;
+  background: #ffffff;
 }
 
 .adminImageUploadControl button {
@@ -2174,16 +2205,17 @@ input[type='radio'] {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-width: 148px;
+  min-width: 124px;
   border: 1px solid var(--color-orange);
   border-left: 0;
-  border-radius: 0 14px 14px 0;
+  border-radius: 0 12px 12px 0;
   background: var(--color-orange);
   color: #ffffff;
   cursor: pointer;
   font: inherit;
   font-weight: 800;
-  padding: 0 14px;
+  padding: 0 12px;
+  white-space: nowrap;
 }
 
 .adminImageUploadControl button:disabled {
@@ -3449,6 +3481,65 @@ article p {
   line-height: 1.6;
 }
 
+.serviceAreaCard {
+  padding: 26px;
+  border: 1px solid rgba(114, 114, 114, 0.22);
+  border-radius: 22px;
+  background: #ffffff;
+  color: var(--color-navy);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.serviceAreaCard:hover,
+.serviceAreaCard:focus-visible {
+  border-color: rgba(240, 128, 26, 0.42);
+  box-shadow: 0 16px 36px rgba(10, 14, 28, 0.1);
+  outline: 0;
+  transform: translateY(-2px);
+}
+
+.serviceAreaCard h3 {
+  margin: 0 0 12px;
+  color: var(--color-orange);
+  font-size: 20px;
+}
+
+.serviceAreaCard p {
+  margin: 0;
+  color: var(--color-dark-gray);
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.serviceDetailModal {
+  width: min(860px, 100%);
+}
+
+.serviceDetailContent img {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  margin-bottom: 22px;
+  border-radius: 22px;
+  object-fit: cover;
+}
+
+.serviceDetailContent strong {
+  display: block;
+  margin: 0 0 14px;
+  color: var(--color-navy);
+  font-size: 18px;
+  line-height: 1.5;
+}
+
+.serviceDetailContent > p:not(.quoteModalEyebrow) {
+  max-width: none;
+  white-space: pre-line;
+}
+
 .contactSection {
   position: relative;
   z-index: 1;
@@ -3513,8 +3604,8 @@ article p {
   overflow: visible;
   padding: 14px 0 18px;
   background:
-    radial-gradient(circle at 10% 10%, rgba(240, 128, 26, 0.18), transparent 30%),
-    linear-gradient(135deg, #071529 0%, #111f3e 58%, #1b2c56 100%);
+    radial-gradient(circle at 10% 10%, rgba(240, 128, 26, 0.12), transparent 30%),
+    linear-gradient(135deg, #030914 0%, #081328 58%, #0f1c3a 100%);
   color: #ffffff;
 }
 
@@ -3563,12 +3654,12 @@ article p {
 
 .referenceCloud::before {
   left: 0;
-  background: linear-gradient(90deg, #071529, transparent);
+  background: linear-gradient(90deg, #030914, transparent);
 }
 
 .referenceCloud::after {
   right: 0;
-  background: linear-gradient(270deg, #1b2c56, transparent);
+  background: linear-gradient(270deg, #0f1c3a, transparent);
 }
 
 .referenceCloudTrack {
@@ -3597,14 +3688,22 @@ article p {
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.08);
   box-shadow: 0 22px 56px rgba(0, 0, 0, 0.18);
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
 }
 
 .referenceLogoCard img {
-  width: 90%;
-  max-height: 76px;
+  width: 61.875%;
+  max-height: 52px;
   object-fit: contain;
   filter: saturate(0.95) brightness(1.08);
+}
+
+@media (max-width: 900px) {
+  .referenceLogoCard img {
+    width: 41.25%;
+    max-height: 35px;
+  }
 }
 
 .referencePopover {
@@ -4621,6 +4720,17 @@ article p {
   .adminImageUploadControl,
   .adminQuoteQuestionImageControl {
     grid-template-columns: 1fr;
+  }
+
+  .adminProductForm .adminImageUploadControl input:not([type='file']) {
+    border-radius: 12px 12px 0 0;
+  }
+
+  .adminImageUploadControl button {
+    min-height: 40px;
+    border-top: 0;
+    border-left: 1px solid var(--color-orange);
+    border-radius: 0 0 12px 12px;
   }
 
   .adminAvatarPreview {

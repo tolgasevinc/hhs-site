@@ -20,6 +20,9 @@ type ProductInput = {
   title: string;
   slug: string;
   description?: string;
+  metaTitle?: string;
+  metaKeywords?: string;
+  metaDescription?: string;
   image?: string;
   imageSquare?: string;
   imageHorizontal?: string;
@@ -36,6 +39,9 @@ type CategoryInput = {
   title: string;
   slug: string;
   description?: string;
+  metaTitle?: string;
+  metaKeywords?: string;
+  metaDescription?: string;
   image?: string;
   imageSquare?: string;
   imageHorizontal?: string;
@@ -90,6 +96,16 @@ type SiteReferenceInput = {
   key: string;
   title: string;
   description?: string;
+  imageUrl?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
+type SiteServiceInput = {
+  key: string;
+  title: string;
+  summary?: string;
+  detail?: string;
   imageUrl?: string;
   sortOrder?: number;
   isActive?: boolean;
@@ -207,6 +223,9 @@ type ProductRow = {
   title: string;
   slug: string;
   description: string;
+  meta_title: string;
+  meta_keywords: string;
+  meta_description: string;
   image_url: string;
   image_square_url: string;
   image_horizontal_url: string;
@@ -233,6 +252,9 @@ type CategoryRow = {
   title: string;
   slug: string;
   description: string;
+  meta_title: string;
+  meta_keywords: string;
+  meta_description: string;
   image_url: string;
   image_square_url: string;
   image_horizontal_url: string;
@@ -294,6 +316,18 @@ type SiteReferenceRow = {
   key: string;
   title: string;
   description: string;
+  image_url: string;
+  sort_order: number;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type SiteServiceRow = {
+  key: string;
+  title: string;
+  summary: string;
+  detail: string;
   image_url: string;
   sort_order: number;
   is_active: number;
@@ -483,6 +517,14 @@ const getSiteReferenceRequestBody = async (request: Request) => {
   }
 };
 
+const getSiteServiceRequestBody = async (request: Request) => {
+  try {
+    return (await request.json()) as SiteServiceInput;
+  } catch {
+    return null;
+  }
+};
+
 const getPushoverSettingsRequestBody = async (request: Request) => {
   try {
     return (await request.json()) as PushoverSettingsInput;
@@ -570,6 +612,10 @@ const isValidContactSettingsInput = (body: ContactSettingsInput | null): body is
 
 const isValidSiteReferenceInput = (body: SiteReferenceInput | null): body is SiteReferenceInput => {
   return Boolean(body?.key?.trim() && body.title?.trim() && body.imageUrl?.trim());
+};
+
+const isValidSiteServiceInput = (body: SiteServiceInput | null): body is SiteServiceInput => {
+  return Boolean(body?.key?.trim() && body.title?.trim() && body.summary?.trim() && body.detail?.trim());
 };
 
 const isValidServiceRequestInput = (body: ServiceRequestInput | null): body is ServiceRequestInput => {
@@ -685,6 +731,7 @@ const getUsedAssetKeys = async (db: D1Database) => {
     db.prepare('SELECT image_url FROM blog_posts').all<AssetUrlRow>(),
     db.prepare('SELECT image_url FROM quote_questions').all<AssetUrlRow>(),
     db.prepare('SELECT image_url FROM site_references').all<AssetUrlRow>(),
+    db.prepare('SELECT image_url FROM site_services').all<AssetUrlRow>(),
     db.prepare('SELECT avatar_url FROM admin_users').all<AssetUrlRow>(),
   ];
   const results = await Promise.all(
@@ -738,6 +785,7 @@ const getAssetReferences = async (db: D1Database, objectKey: string) => {
     db.prepare('SELECT title AS label FROM blog_posts WHERE image_url LIKE ?').bind(likeValue),
     db.prepare('SELECT question AS label FROM quote_questions WHERE image_url LIKE ?').bind(likeValue),
     db.prepare('SELECT title AS label FROM site_references WHERE image_url LIKE ?').bind(likeValue),
+    db.prepare('SELECT title AS label FROM site_services WHERE image_url LIKE ?').bind(likeValue),
     db.prepare('SELECT display_name AS label FROM admin_users WHERE avatar_url LIKE ?').bind(likeValue),
   ];
   const results = await Promise.all(
@@ -1168,6 +1216,9 @@ const mapProducts = (products: ProductRow[], badges: BadgeRow[], children: Child
     title: product.title,
     slug: product.slug,
     description: product.description,
+    metaTitle: product.meta_title,
+    metaKeywords: product.meta_keywords,
+    metaDescription: product.meta_description,
     image: product.image_url,
     imageSquare: product.image_square_url || product.image_url,
     imageHorizontal: product.image_horizontal_url || product.image_url,
@@ -1196,6 +1247,9 @@ const listProducts = async (db: D1Database) => {
         p.title,
         p.slug,
         p.description,
+        p.meta_title,
+        p.meta_keywords,
+        p.meta_description,
         p.image_url,
         p.image_square_url,
         p.image_horizontal_url,
@@ -1223,7 +1277,7 @@ const listProducts = async (db: D1Database) => {
 const listCategories = async (db: D1Database) => {
   const categories = await db
     .prepare(
-      `SELECT key, title, slug, description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order
+      `SELECT key, title, slug, description, meta_title, meta_keywords, meta_description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order
       FROM product_categories
       ORDER BY sort_order ASC, created_at ASC`,
     )
@@ -1234,6 +1288,9 @@ const listCategories = async (db: D1Database) => {
     title: category.title,
     slug: category.slug,
     description: category.description,
+    metaTitle: category.meta_title,
+    metaKeywords: category.meta_keywords,
+    metaDescription: category.meta_description,
     image: category.image_url,
     imageSquare: category.image_square_url || category.image_url,
     imageHorizontal: category.image_horizontal_url || category.image_url,
@@ -1744,6 +1801,134 @@ const deleteSiteReference = async (db: D1Database, key: string) => {
   return listSiteReferences(db, true);
 };
 
+const ensureSiteServicesTable = async (db: D1Database) => {
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS site_services (
+        key TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL DEFAULT '',
+        detail TEXT NOT NULL DEFAULT '',
+        image_url TEXT NOT NULL DEFAULT '',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+    )
+    .run();
+
+  const existing = await db.prepare('SELECT COUNT(*) AS count FROM site_services').first<{ count: number }>();
+
+  if ((existing?.count ?? 0) === 0) {
+    await db.batch([
+      db
+        .prepare('INSERT OR IGNORE INTO site_services (key, title, summary, detail, sort_order, is_active) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(
+          'bahceKapisiMotorlari',
+          'Bahçe Kapısı Motorları',
+          'Yana kayar ve kanatlı kapılar için motor, kumanda, fotosel ve aksesuar çözümleri.',
+          'Yana kayar ve kanatlı bahçe kapıları için motor, kumanda, fotosel, emniyet ekipmanları ve aksesuar çözümleri sunuyoruz.',
+          1,
+          1,
+        ),
+      db
+        .prepare('INSERT OR IGNORE INTO site_services (key, title, summary, detail, sort_order, is_active) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(
+          'otomatikBariyerSistemleri',
+          'Otomatik Bariyer Sistemleri',
+          'Site, fabrika, otopark ve işletme girişleri için profesyonel bariyer sistemleri.',
+          'Site, fabrika, otopark ve işletme girişlerinde yoğun kullanıma uygun otomatik bariyer sistemleri planlıyor ve kuruyoruz.',
+          2,
+          1,
+        ),
+      db
+        .prepare('INSERT OR IGNORE INTO site_services (key, title, summary, detail, sort_order, is_active) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(
+          'fotoselliKapilar',
+          'Fotoselli Kapılar',
+          'Mağaza, hastane, ofis ve yoğun geçiş alanları için otomatik cam kapı sistemleri.',
+          'Mağaza, hastane, ofis ve yoğun geçiş alanlarında kullanılabilecek fotoselli otomatik cam kapı çözümleri sağlıyoruz.',
+          3,
+          1,
+        ),
+      db
+        .prepare('INSERT OR IGNORE INTO site_services (key, title, summary, detail, sort_order, is_active) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(
+          'plakaTanimaSistemleri',
+          'Plaka Tanıma Sistemleri',
+          'Araç giriş kontrolü, ambulans geçiş önceliği ve yetkili araç geçiş çözümleri.',
+          'Araç giriş kontrolü, yetkili araç geçişi ve özel geçiş senaryoları için plaka tanıma çözümleri kuruyoruz.',
+          4,
+          1,
+        ),
+    ]);
+  }
+};
+
+const mapSiteService = (service: SiteServiceRow) => ({
+  key: service.key,
+  title: service.title,
+  summary: service.summary,
+  detail: service.detail,
+  imageUrl: service.image_url,
+  sortOrder: service.sort_order,
+  isActive: Boolean(service.is_active),
+  createdAt: service.created_at,
+  updatedAt: service.updated_at,
+});
+
+const listSiteServices = async (db: D1Database, includeInactive = false) => {
+  await ensureSiteServicesTable(db);
+  const services = await db
+    .prepare(
+      `SELECT key, title, summary, detail, image_url, sort_order, is_active, created_at, updated_at
+      FROM site_services
+      ${includeInactive ? '' : 'WHERE is_active = 1'}
+      ORDER BY sort_order ASC, title ASC`,
+    )
+    .all<SiteServiceRow>();
+
+  return services.results.map(mapSiteService);
+};
+
+const upsertSiteService = async (db: D1Database, service: SiteServiceInput, previousKey?: string) => {
+  await ensureSiteServicesTable(db);
+  const key = previousKey ?? service.key.trim();
+
+  await db
+    .prepare(
+      `INSERT INTO site_services (key, title, summary, detail, image_url, sort_order, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        title = excluded.title,
+        summary = excluded.summary,
+        detail = excluded.detail,
+        image_url = excluded.image_url,
+        sort_order = excluded.sort_order,
+        is_active = excluded.is_active,
+        updated_at = CURRENT_TIMESTAMP`,
+    )
+    .bind(
+      key,
+      service.title.trim(),
+      service.summary?.trim() ?? '',
+      service.detail?.trim() ?? '',
+      service.imageUrl?.trim() ?? '',
+      Number(service.sortOrder ?? 0),
+      service.isActive === false ? 0 : 1,
+    )
+    .run();
+
+  return listSiteServices(db, true);
+};
+
+const deleteSiteService = async (db: D1Database, key: string) => {
+  await ensureSiteServicesTable(db);
+  await db.prepare('DELETE FROM site_services WHERE key = ?').bind(key).run();
+  return listSiteServices(db, true);
+};
+
 const ensureServiceRequestsTable = async (db: D1Database) => {
   await db
     .prepare(
@@ -2235,7 +2420,7 @@ const closeQuoteRequest = async (db: D1Database, id: string) => {
 const getCategory = async (db: D1Database, key: string) => {
   const category = await db
     .prepare(
-      `SELECT key, title, slug, description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order
+      `SELECT key, title, slug, description, meta_title, meta_keywords, meta_description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order
       FROM product_categories
       WHERE key = ?`,
     )
@@ -2251,6 +2436,9 @@ const getCategory = async (db: D1Database, key: string) => {
     title: category.title,
     slug: category.slug,
     description: category.description,
+    metaTitle: category.meta_title,
+    metaKeywords: category.meta_keywords,
+    metaDescription: category.meta_description,
     image: category.image_url,
     imageSquare: category.image_square_url || category.image_url,
     imageHorizontal: category.image_horizontal_url || category.image_url,
@@ -2267,19 +2455,25 @@ const createCategory = async (db: D1Database, category: CategoryInput) => {
         title,
         slug,
         description,
+        meta_title,
+        meta_keywords,
+        meta_description,
         image_url,
         image_square_url,
         image_horizontal_url,
         image_vertical_url,
         sort_order
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       category.key,
       category.title,
       category.slug,
       category.description ?? '',
+      category.metaTitle ?? '',
+      category.metaKeywords ?? '',
+      category.metaDescription ?? '',
       category.image ?? '',
       category.imageSquare ?? category.image ?? '',
       category.imageHorizontal ?? category.image ?? '',
@@ -2299,6 +2493,9 @@ const updateCategory = async (db: D1Database, key: string, category: CategoryInp
         title = ?,
         slug = ?,
         description = ?,
+        meta_title = ?,
+        meta_keywords = ?,
+        meta_description = ?,
         image_url = ?,
         image_square_url = ?,
         image_horizontal_url = ?,
@@ -2311,6 +2508,9 @@ const updateCategory = async (db: D1Database, key: string, category: CategoryInp
       category.title,
       category.slug,
       category.description ?? '',
+      category.metaTitle ?? '',
+      category.metaKeywords ?? '',
+      category.metaDescription ?? '',
       category.image ?? '',
       category.imageSquare ?? category.image ?? '',
       category.imageHorizontal ?? category.image ?? '',
@@ -2333,6 +2533,9 @@ const getProduct = async (db: D1Database, key: string) => {
         p.title,
         p.slug,
         p.description,
+        p.meta_title,
+        p.meta_keywords,
+        p.meta_description,
         p.image_url,
         p.image_square_url,
         p.image_horizontal_url,
@@ -2377,6 +2580,9 @@ const createProduct = async (db: D1Database, product: ProductInput) => {
           title,
           slug,
           description,
+          meta_title,
+          meta_keywords,
+          meta_description,
           image_url,
           image_square_url,
           image_horizontal_url,
@@ -2384,7 +2590,7 @@ const createProduct = async (db: D1Database, product: ProductInput) => {
           alt_text,
           sort_order,
           is_active
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         product.key,
@@ -2392,6 +2598,9 @@ const createProduct = async (db: D1Database, product: ProductInput) => {
         product.title,
         product.slug,
         product.description ?? '',
+        product.metaTitle ?? '',
+        product.metaKeywords ?? '',
+        product.metaDescription ?? '',
         product.image ?? '',
         product.imageSquare ?? product.image ?? '',
         product.imageHorizontal ?? product.image ?? '',
@@ -2428,6 +2637,9 @@ const updateProduct = async (db: D1Database, key: string, product: ProductInput)
           title = ?,
           slug = ?,
           description = ?,
+          meta_title = ?,
+          meta_keywords = ?,
+          meta_description = ?,
           image_url = ?,
           image_square_url = ?,
           image_horizontal_url = ?,
@@ -2443,6 +2655,9 @@ const updateProduct = async (db: D1Database, key: string, product: ProductInput)
         product.title,
         product.slug,
         product.description ?? '',
+        product.metaTitle ?? '',
+        product.metaKeywords ?? '',
+        product.metaDescription ?? '',
         product.image ?? '',
         product.imageSquare ?? product.image ?? '',
         product.imageHorizontal ?? product.image ?? '',
@@ -3223,6 +3438,86 @@ export default {
         return json({
           ok: true,
           references: await deleteSiteReference(env.DB, key),
+        });
+      }
+    }
+
+    if (url.pathname === '/api/services') {
+      if (request.method === 'GET') {
+        const includeInactive = url.searchParams.get('includeInactive') === '1';
+
+        if (includeInactive) {
+          const admin = await authenticateAdmin(request, env.DB);
+
+          if (!admin) {
+            return unauthorized();
+          }
+
+          if (!hasAdminModule(admin, 'settings')) {
+            return forbidden();
+          }
+        }
+
+        return json({
+          ok: true,
+          services: await listSiteServices(env.DB, includeInactive),
+        });
+      }
+
+      if (request.method === 'POST' || request.method === 'PUT') {
+        const admin = await authenticateAdmin(request, env.DB);
+
+        if (!admin) {
+          return unauthorized();
+        }
+
+        if (!hasAdminModule(admin, 'settings')) {
+          return forbidden();
+        }
+
+        const body = await getSiteServiceRequestBody(request);
+
+        if (!isValidSiteServiceInput(body)) {
+          return json({ ok: false, error: 'Invalid service payload' }, { status: 400 });
+        }
+
+        return json({
+          ok: true,
+          services: await upsertSiteService(env.DB, body),
+        });
+      }
+    }
+
+    if (url.pathname.startsWith('/api/services/')) {
+      const admin = await authenticateAdmin(request, env.DB);
+
+      if (!admin) {
+        return unauthorized();
+      }
+
+      if (!hasAdminModule(admin, 'settings')) {
+        return forbidden();
+      }
+
+      const key = decodeURIComponent(url.pathname.replace('/api/services/', ''));
+
+      if (request.method === 'PUT') {
+        const body = await getSiteServiceRequestBody(request);
+
+        if (!isValidSiteServiceInput(body)) {
+          return json({ ok: false, error: 'Invalid service payload' }, { status: 400 });
+        }
+
+        return json({
+          ok: true,
+          services: await upsertSiteService(env.DB, body, key),
+        });
+      }
+
+      if (request.method === 'DELETE') {
+        return json({
+          ok: true,
+          services: await deleteSiteService(env.DB, key),
         });
       }
     }

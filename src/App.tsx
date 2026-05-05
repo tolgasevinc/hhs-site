@@ -1,4 +1,4 @@
-import { type CSSProperties, type ChangeEvent, type FormEvent, type PointerEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type ChangeEvent, type DragEvent, type FormEvent, type PointerEvent, type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import {
@@ -40,6 +40,9 @@ type AdminProduct = {
   title: string;
   slug: string;
   description: string;
+  metaTitle: string;
+  metaKeywords: string;
+  metaDescription: string;
   image: string;
   imageSquare: string;
   imageHorizontal: string;
@@ -55,6 +58,9 @@ type AdminCategory = {
   title: string;
   slug: string;
   description: string;
+  metaTitle: string;
+  metaKeywords: string;
+  metaDescription: string;
   image: string;
   imageSquare: string;
   imageHorizontal: string;
@@ -101,10 +107,32 @@ type SiteReference = {
   updatedAt?: string;
 };
 
+type SiteService = {
+  key: string;
+  title: string;
+  summary: string;
+  detail: string;
+  imageUrl: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 type ReferenceFormState = {
   key: string;
   title: string;
   description: string;
+  imageUrl: string;
+  sortOrder: string;
+  isActive: boolean;
+};
+
+type SiteServiceFormState = {
+  key: string;
+  title: string;
+  summary: string;
+  detail: string;
   imageUrl: string;
   sortOrder: string;
   isActive: boolean;
@@ -116,6 +144,9 @@ type ProductFormState = {
   title: string;
   slug: string;
   description: string;
+  metaTitle: string;
+  metaKeywords: string;
+  metaDescription: string;
   image: string;
   imageSquare: string;
   imageHorizontal: string;
@@ -149,6 +180,9 @@ type CategoryFormState = {
   title: string;
   slug: string;
   description: string;
+  metaTitle: string;
+  metaKeywords: string;
+  metaDescription: string;
   image: string;
   imageSquare: string;
   imageHorizontal: string;
@@ -227,6 +261,87 @@ type PendingImageCrop = {
   previewUrl: string;
   focalPoints: CropFocalPoints;
 } | null;
+
+type AdminImageUploadControlProps = {
+  value: string;
+  onUrlChange: (value: string) => void;
+  inputRef: RefObject<HTMLInputElement | null>;
+  onFileInputChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onFileDrop: (file: File) => void | Promise<void>;
+  buttonLabel: string;
+  disabled: boolean;
+  placeholder?: string;
+  required?: boolean;
+};
+
+const isDraggingFiles = (event: DragEvent<HTMLElement>) => Array.from(event.dataTransfer.types).includes('Files');
+
+function AdminImageUploadControl({
+  value,
+  onUrlChange,
+  inputRef,
+  onFileInputChange,
+  onFileDrop,
+  buttonLabel,
+  disabled,
+  placeholder,
+  required = false,
+}: AdminImageUploadControlProps) {
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!isDraggingFiles(event)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = disabled ? 'none' : 'copy';
+  };
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!isDraggingFiles(event)) {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (disabled) {
+      return;
+    }
+
+    const file = event.dataTransfer.files[0];
+
+    if (file) {
+      void onFileDrop(file);
+    }
+  };
+
+  return (
+    <div className="adminImageUploadControl" onDragOver={handleDragOver} onDrop={handleDrop}>
+      <input
+        required={required}
+        value={value}
+        onChange={(event) => onUrlChange(event.target.value)}
+        placeholder={placeholder}
+      />
+      <input
+        ref={inputRef}
+        className="adminHiddenFileInput"
+        type="file"
+        accept="image/*"
+        aria-label="Görsel dosyası seç"
+        onChange={onFileInputChange}
+      />
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => inputRef.current?.click()}
+        title="Görsel seçin veya dosyayı bu alana bırakın"
+      >
+        <Upload size={17} strokeWidth={2.4} />
+        {buttonLabel}
+      </button>
+    </div>
+  );
+}
 
 const defaultCropFocalPoint: CropFocalPoint = { x: 0.5, y: 0.5 };
 
@@ -371,6 +486,7 @@ type AdminSection =
   | 'products'
   | 'blog'
   | 'assets'
+  | 'services'
   | 'references'
   | 'quoteQuestions'
   | 'quoteRequests'
@@ -517,6 +633,16 @@ const emptyReferenceForm: ReferenceFormState = {
   isActive: true,
 };
 
+const emptySiteServiceForm: SiteServiceFormState = {
+  key: `srv_${crypto.randomUUID()}`,
+  title: '',
+  summary: '',
+  detail: '',
+  imageUrl: '',
+  sortOrder: '0',
+  isActive: true,
+};
+
 const emptyQuoteContactForm: QuoteContactFormState = {
   fullName: '',
   phone: '',
@@ -529,6 +655,9 @@ const createEmptyProductForm = (categoryKey = ''): ProductFormState => ({
   title: '',
   slug: '',
   description: '',
+  metaTitle: '',
+  metaKeywords: '',
+  metaDescription: '',
   image: '',
   imageSquare: '',
   imageHorizontal: '',
@@ -562,6 +691,9 @@ const emptyCategoryForm: CategoryFormState = {
   title: '',
   slug: '',
   description: '',
+  metaTitle: '',
+  metaKeywords: '',
+  metaDescription: '',
   image: '',
   imageSquare: '',
   imageHorizontal: '',
@@ -573,6 +705,18 @@ const parseSortOrder = (value: string) => {
   const parsedValue = Number.parseInt(value, 10);
   return Number.isFinite(parsedValue) ? parsedValue : 0;
 };
+
+const getQuoteNumberDecimalPlaces = (question: QuoteQuestion) =>
+  Math.min(6, Math.max(0, Math.trunc(question.decimalPlaces ?? 0)));
+
+const getQuoteNumberStep = (question: QuoteQuestion) => {
+  const decimalPlaces = getQuoteNumberDecimalPlaces(question);
+
+  return decimalPlaces > 0 ? 1 / 10 ** decimalPlaces : 1;
+};
+
+const formatQuoteNumberAnswer = (value: number, question: QuoteQuestion) =>
+  value.toFixed(getQuoteNumberDecimalPlaces(question));
 
 const emptyAdminUserForm: AdminUserFormState = {
   username: '',
@@ -849,6 +993,7 @@ function App() {
   const [selectedQuoteProductKey, setSelectedQuoteProductKey] = useState('');
   const [hoveredCategoryGalleryIndex, setHoveredCategoryGalleryIndex] = useState<number | null>(null);
   const [selectedCategoryGalleryIndex, setSelectedCategoryGalleryIndex] = useState<number | null>(null);
+  const [selectedSiteService, setSelectedSiteService] = useState<SiteService | null>(null);
   const [hasQuoteButtonEntered, setHasQuoteButtonEntered] = useState(false);
   const [adminSection, setAdminSection] = useState<AdminSection>('products');
   const [adminProducts, setAdminProducts] = useState<AdminProduct[]>([]);
@@ -863,6 +1008,7 @@ function App() {
   const [blogTags, setBlogTags] = useState<BlogTaxonomyItem[]>([]);
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
   const [siteReferences, setSiteReferences] = useState<SiteReference[]>([]);
+  const [siteServices, setSiteServices] = useState<SiteService[]>([]);
   const [quoteQuestions, setQuoteQuestions] = useState<QuoteQuestion[]>([]);
   const [quoteRequests, setQuoteRequests] = useState<QuoteRequest[]>([]);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
@@ -884,6 +1030,7 @@ function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isReferenceModalOpen, setIsReferenceModalOpen] = useState(false);
+  const [isSiteServiceModalOpen, setIsSiteServiceModalOpen] = useState(false);
   const [isQuoteQuestionModalOpen, setIsQuoteQuestionModalOpen] = useState(false);
   const [isSavingSocialLinks, setIsSavingSocialLinks] = useState(false);
   const [isSavingContactSettings, setIsSavingContactSettings] = useState(false);
@@ -904,6 +1051,7 @@ function App() {
   const [isUploadingCategoryImage, setIsUploadingCategoryImage] = useState(false);
   const [isUploadingQuoteQuestionImage, setIsUploadingQuoteQuestionImage] = useState(false);
   const [isUploadingReferenceImage, setIsUploadingReferenceImage] = useState(false);
+  const [isUploadingSiteServiceImage, setIsUploadingSiteServiceImage] = useState(false);
   const [isUploadingUserAvatar, setIsUploadingUserAvatar] = useState(false);
   const [isConfirmingProductDelete, setIsConfirmingProductDelete] = useState(false);
   const [isConfirmingCategoryDelete, setIsConfirmingCategoryDelete] = useState(false);
@@ -927,11 +1075,13 @@ function App() {
   const [editingCategoryKey, setEditingCategoryKey] = useState<string | null>(null);
   const [editingQuoteQuestionId, setEditingQuoteQuestionId] = useState<string | null>(null);
   const [editingReferenceKey, setEditingReferenceKey] = useState<string | null>(null);
+  const [editingSiteServiceKey, setEditingSiteServiceKey] = useState<string | null>(null);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [productForm, setProductForm] = useState<ProductFormState>(createEmptyProductForm());
   const [blogPostForm, setBlogPostForm] = useState<BlogPostFormState>(createEmptyBlogPostForm());
   const [categoryForm, setCategoryForm] = useState<CategoryFormState>(emptyCategoryForm);
   const [referenceForm, setReferenceForm] = useState<ReferenceFormState>(emptyReferenceForm);
+  const [siteServiceForm, setSiteServiceForm] = useState<SiteServiceFormState>(emptySiteServiceForm);
   const [adminUserForm, setAdminUserForm] = useState<AdminUserFormState>(emptyAdminUserForm);
   const [adminMessage, setAdminMessage] = useState('');
   const [adminToken, setAdminToken] = useState('');
@@ -947,6 +1097,7 @@ function App() {
   const categoryImageInputRef = useRef<HTMLInputElement>(null);
   const quoteQuestionImageInputRef = useRef<HTMLInputElement>(null);
   const referenceImageInputRef = useRef<HTMLInputElement>(null);
+  const siteServiceImageInputRef = useRef<HTMLInputElement>(null);
   const cropPointRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const cropPreviewImageRefs = useRef<(HTMLImageElement | null)[]>([]);
   const userAvatarInputRef = useRef<HTMLInputElement>(null);
@@ -1011,7 +1162,13 @@ function App() {
       return 'products';
     }
 
-    if (section === 'references' || section === 'quoteQuestions' || section === 'quoteRequests' || section === 'serviceRequests') {
+    if (
+      section === 'services' ||
+      section === 'references' ||
+      section === 'quoteQuestions' ||
+      section === 'quoteRequests' ||
+      section === 'serviceRequests'
+    ) {
       return 'settings';
     }
 
@@ -1030,15 +1187,17 @@ function App() {
         ? 'blog'
         : canAccessAdminSection('quoteQuestions')
           ? 'quoteQuestions'
-          : canAccessAdminSection('references')
-            ? 'references'
-            : canAccessAdminSection('quoteRequests')
-              ? 'quoteRequests'
-              : canAccessAdminSection('serviceRequests')
-                ? 'serviceRequests'
-                : canAccessAdminSection('users')
-                  ? 'users'
-                  : 'database';
+          : canAccessAdminSection('services')
+            ? 'services'
+            : canAccessAdminSection('references')
+              ? 'references'
+              : canAccessAdminSection('quoteRequests')
+                ? 'quoteRequests'
+                : canAccessAdminSection('serviceRequests')
+                  ? 'serviceRequests'
+                  : canAccessAdminSection('users')
+                    ? 'users'
+                    : 'database';
   const phonePrimaryHref = createPhoneHref(contactSettings.phonePrimary);
   const phoneSecondaryHref = createPhoneHref(contactSettings.phoneSecondary);
   const whatsappHref = createWhatsAppHref(contactSettings.whatsapp);
@@ -1372,6 +1531,7 @@ function App() {
           categoriesResult,
           socialLinksResult,
           contactSettingsResult,
+          siteServicesResult,
           referencesResult,
           quoteQuestionsResult,
           pushoverSettingsResult,
@@ -1386,6 +1546,11 @@ function App() {
             readApiJson<{ categories?: AdminCategory[] }>(fetch(apiUrl('/api/product-categories'))),
             readApiJson<{ links?: SocialLink[] }>(fetch(apiUrl('/api/footer-social-links'))),
             readApiJson<{ settings?: ContactSettings }>(fetch(apiUrl('/api/contact-settings'))),
+            readApiJson<{ services?: SiteService[] }>(
+              isPanelPage && adminUser?.modules.includes('settings')
+                ? authorizedFetch('/api/services?includeInactive=1')
+                : fetch(apiUrl('/api/services')),
+            ),
             readApiJson<{ references?: SiteReference[] }>(
               isPanelPage && adminUser?.modules.includes('settings')
                 ? authorizedFetch('/api/references?includeInactive=1')
@@ -1423,6 +1588,7 @@ function App() {
         const categoriesData = categoriesResult.data ?? {};
         const socialLinksData = socialLinksResult.data ?? {};
         const contactSettingsData = contactSettingsResult.data ?? {};
+        const siteServicesData = siteServicesResult.data ?? {};
         const referencesData = referencesResult.data ?? {};
         const quoteQuestionsData = quoteQuestionsResult.data ?? {};
         const pushoverSettingsData = pushoverSettingsResult.data ?? {};
@@ -1450,6 +1616,10 @@ function App() {
         if (contactSettingsData.settings) {
           setContactSettings(contactSettingsData.settings);
           setContactSettingsForm(contactSettingsData.settings);
+        }
+
+        if (siteServicesData.services) {
+          setSiteServices(siteServicesData.services);
         }
 
         if (referencesData.references) {
@@ -1545,6 +1715,11 @@ function App() {
         return;
       }
 
+      if (selectedSiteService) {
+        setSelectedSiteService(null);
+        return;
+      }
+
       if (imagePreview) {
         setImagePreview(null);
         return;
@@ -1593,6 +1768,18 @@ function App() {
         return;
       }
 
+      if (isSiteServiceModalOpen) {
+        setIsSiteServiceModalOpen(false);
+        setEditingSiteServiceKey(null);
+        return;
+      }
+
+      if (isReferenceModalOpen) {
+        setIsReferenceModalOpen(false);
+        setEditingReferenceKey(null);
+        return;
+      }
+
       if (isCategoryModalOpen) {
         setIsCategoryModalOpen(false);
         setEditingCategoryKey(null);
@@ -1638,6 +1825,8 @@ function App() {
     isBlogModalOpen,
     isProductModalOpen,
     isQuoteQuestionModalOpen,
+    isReferenceModalOpen,
+    isSiteServiceModalOpen,
     pendingImageCrop,
     isQuoteModalOpen,
     isServiceRequestModalOpen,
@@ -1646,6 +1835,7 @@ function App() {
     editingQuoteQuestionId,
     selectedDatabaseTable,
     selectedCategoryGalleryIndex,
+    selectedSiteService,
   ]);
 
   useEffect(() => {
@@ -1860,6 +2050,9 @@ function App() {
       title: product.title,
       slug: product.slug,
       description: product.description,
+      metaTitle: product.metaTitle,
+      metaKeywords: product.metaKeywords,
+      metaDescription: product.metaDescription,
       image: productImages.image,
       imageSquare: productImages.imageSquare,
       imageHorizontal: productImages.imageHorizontal,
@@ -1966,10 +2159,7 @@ function App() {
     }));
   };
 
-  const uploadBlogImage = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-
+  const uploadBlogImageFile = (file: File) => {
     if (!file) {
       return;
     }
@@ -1982,10 +2172,16 @@ function App() {
     openImageCropper(file, 'blog-image');
   };
 
-  const uploadQuoteQuestionImage = async (event: ChangeEvent<HTMLInputElement>) => {
+  const uploadBlogImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
 
+    if (file) {
+      uploadBlogImageFile(file);
+    }
+  };
+
+  const uploadQuoteQuestionImageFile = (file: File) => {
     if (!file) {
       return;
     }
@@ -1998,10 +2194,16 @@ function App() {
     openImageCropper(file, 'page-image');
   };
 
-  const uploadProductImage = async (event: ChangeEvent<HTMLInputElement>) => {
+  const uploadQuoteQuestionImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
 
+    if (file) {
+      uploadQuoteQuestionImageFile(file);
+    }
+  };
+
+  const uploadProductImageFile = (file: File) => {
     if (!file) {
       return;
     }
@@ -2014,10 +2216,16 @@ function App() {
     openImageCropper(file, 'product-image');
   };
 
-  const uploadAdminUserAvatar = async (event: ChangeEvent<HTMLInputElement>) => {
+  const uploadProductImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
 
+    if (file) {
+      uploadProductImageFile(file);
+    }
+  };
+
+  const uploadAdminUserAvatarFile = async (file: File) => {
     if (!file) {
       return;
     }
@@ -2063,6 +2271,15 @@ function App() {
     }
   };
 
+  const uploadAdminUserAvatar = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (file) {
+      void uploadAdminUserAvatarFile(file);
+    }
+  };
+
   const openNewReferenceModal = () => {
     setEditingReferenceKey(null);
     setReferenceForm({ ...emptyReferenceForm, key: `ref_${crypto.randomUUID()}` });
@@ -2104,10 +2321,104 @@ function App() {
     }));
   };
 
-  const uploadReferenceImage = async (event: ChangeEvent<HTMLInputElement>) => {
+  const openNewSiteServiceModal = () => {
+    setEditingSiteServiceKey(null);
+    setSiteServiceForm({ ...emptySiteServiceForm, key: `srv_${crypto.randomUUID()}` });
+    setIsSiteServiceModalOpen(true);
+    setAdminMessage('');
+  };
+
+  const openEditSiteServiceModal = (service: SiteService) => {
+    setEditingSiteServiceKey(service.key);
+    setSiteServiceForm({
+      key: service.key,
+      title: service.title,
+      summary: service.summary,
+      detail: service.detail,
+      imageUrl: service.imageUrl,
+      sortOrder: String(service.sortOrder ?? 0),
+      isActive: service.isActive,
+    });
+    setIsSiteServiceModalOpen(true);
+    setAdminMessage('');
+  };
+
+  const closeSiteServiceModal = () => {
+    setIsSiteServiceModalOpen(false);
+    setEditingSiteServiceKey(null);
+  };
+
+  const updateSiteServiceForm = (field: keyof SiteServiceFormState, value: string | boolean) => {
+    setSiteServiceForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }));
+  };
+
+  const updateSiteServiceTitle = (title: string) => {
+    setSiteServiceForm((currentForm) => ({
+      ...currentForm,
+      title,
+      key: editingSiteServiceKey ? currentForm.key : createProductKeyFromTitle(title),
+    }));
+  };
+
+  const uploadSiteServiceImageFile = async (file: File) => {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setAdminMessage('Lütfen geçerli bir hizmet görseli seçin.');
+      return;
+    }
+
+    setIsUploadingSiteServiceImage(true);
+
+    try {
+      const optimizedImage = await optimizeProductImage(file);
+      const response = await authorizedFetch(
+        `/api/assets/page-image?variant=service&folder=sayfa&name=${encodeURIComponent(file.name)}`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'image/webp',
+          },
+          body: optimizedImage,
+        },
+      );
+      const data = (await response.json()) as { ok?: boolean; url?: string; size?: number };
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (!response.ok || !data.url) {
+        setAdminMessage('Hizmet görseli yüklenemedi. Lütfen tekrar deneyin.');
+        return;
+      }
+
+      updateSiteServiceForm('imageUrl', data.url.startsWith('/api/') ? apiUrl(data.url) : data.url);
+      setAdminMessage(`Hizmet görseli yüklendi (${Math.round((data.size ?? optimizedImage.size) / 1024)} KB).`);
+    } catch {
+      setAdminMessage('Hizmet görseli optimize edilip yüklenemedi.');
+    } finally {
+      setIsUploadingSiteServiceImage(false);
+    }
+  };
+
+  const uploadSiteServiceImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
 
+    if (file) {
+      void uploadSiteServiceImageFile(file);
+    }
+  };
+
+  const uploadReferenceImageFile = async (file: File) => {
     if (!file) {
       return;
     }
@@ -2150,6 +2461,15 @@ function App() {
     }
   };
 
+  const uploadReferenceImage = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (file) {
+      void uploadReferenceImageFile(file);
+    }
+  };
+
   const openCategoryModal = () => {
     setEditingCategoryKey(null);
     setCategoryForm(emptyCategoryForm);
@@ -2174,6 +2494,9 @@ function App() {
       title: category.title,
       slug: category.slug,
       description: category.description,
+      metaTitle: category.metaTitle,
+      metaKeywords: category.metaKeywords,
+      metaDescription: category.metaDescription,
       image: categoryImages.image,
       imageSquare: categoryImages.imageSquare,
       imageHorizontal: categoryImages.imageHorizontal,
@@ -2198,10 +2521,7 @@ function App() {
     }));
   };
 
-  const uploadCategoryImage = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-
+  const uploadCategoryImageFile = (file: File) => {
     if (!file) {
       return;
     }
@@ -2212,6 +2532,15 @@ function App() {
     }
 
     openImageCropper(file, 'category-image');
+  };
+
+  const uploadCategoryImage = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (file) {
+      uploadCategoryImageFile(file);
+    }
   };
 
   const reloadAdminUsers = async () => {
@@ -2441,12 +2770,15 @@ function App() {
   };
 
   const reloadAdminCatalog = async () => {
-    const [productsResult, categoriesResult, socialLinksResult, contactSettingsResult, referencesResult, quoteQuestionsResult, pushoverSettingsResult, blogPostsResult, blogCategoriesResult, blogTagsResult] =
+    const [productsResult, categoriesResult, socialLinksResult, contactSettingsResult, siteServicesResult, referencesResult, quoteQuestionsResult, pushoverSettingsResult, blogPostsResult, blogCategoriesResult, blogTagsResult] =
       await Promise.all([
         readApiJson<{ products?: AdminProduct[] }>(fetch(apiUrl('/api/products'))),
         readApiJson<{ categories?: AdminCategory[] }>(fetch(apiUrl('/api/product-categories'))),
         readApiJson<{ links?: SocialLink[] }>(fetch(apiUrl('/api/footer-social-links'))),
         readApiJson<{ settings?: ContactSettings }>(fetch(apiUrl('/api/contact-settings'))),
+        readApiJson<{ services?: SiteService[] }>(
+          canAccessModule('settings') ? authorizedFetch('/api/services?includeInactive=1') : fetch(apiUrl('/api/services')),
+        ),
         readApiJson<{ references?: SiteReference[] }>(
           canAccessModule('settings') ? authorizedFetch('/api/references?includeInactive=1') : fetch(apiUrl('/api/references')),
         ),
@@ -2468,6 +2800,7 @@ function App() {
     const categoriesData = categoriesResult.data ?? {};
     const socialLinksData = socialLinksResult.data ?? {};
     const contactSettingsData = contactSettingsResult.data ?? {};
+    const siteServicesData = siteServicesResult.data ?? {};
     const referencesData = referencesResult.data ?? {};
     const quoteQuestionsData = quoteQuestionsResult.data ?? {};
     const pushoverSettingsData = pushoverSettingsResult.data ?? {};
@@ -2493,6 +2826,10 @@ function App() {
     if (contactSettingsData.settings) {
       setContactSettings(contactSettingsData.settings);
       setContactSettingsForm(contactSettingsData.settings);
+    }
+
+    if (siteServicesData.services) {
+      setSiteServices(siteServicesData.services);
     }
 
     if (referencesData.references) {
@@ -2840,9 +3177,7 @@ function App() {
           answers[question.id] = question.options.includes(question.defaultValue.trim()) ? question.defaultValue.trim() : '';
         } else if (question.answerType === 'number') {
           const defaultNumber = Number(question.defaultValue.replace(',', '.'));
-          answers[question.id] = Number.isFinite(defaultNumber)
-            ? defaultNumber.toFixed(Math.max(question.decimalPlaces, 2))
-            : '';
+          answers[question.id] = Number.isFinite(defaultNumber) ? formatQuoteNumberAnswer(defaultNumber, question) : '';
         } else {
           answers[question.id] = question.defaultValue;
         }
@@ -3574,6 +3909,9 @@ function App() {
       title: productForm.title.trim(),
       slug: productForm.slug.trim(),
       description: productForm.description.trim(),
+      metaTitle: productForm.metaTitle.trim(),
+      metaKeywords: productForm.metaKeywords.trim(),
+      metaDescription: productForm.metaDescription.trim(),
       image: productForm.image.trim(),
       imageSquare: productForm.imageSquare.trim(),
       imageHorizontal: productForm.imageHorizontal.trim(),
@@ -3685,6 +4023,9 @@ function App() {
       title: categoryForm.title.trim(),
       slug: categoryForm.slug.trim(),
       description: categoryForm.description.trim(),
+      metaTitle: categoryForm.metaTitle.trim(),
+      metaKeywords: categoryForm.metaKeywords.trim(),
+      metaDescription: categoryForm.metaDescription.trim(),
       image: categoryForm.image.trim(),
       imageSquare: categoryForm.imageSquare.trim(),
       imageHorizontal: categoryForm.imageHorizontal.trim(),
@@ -3819,6 +4160,73 @@ function App() {
     setSiteReferences(data.references);
     setAdminMessage('Referans silindi.');
     closeReferenceModal();
+  };
+
+  const saveSiteService = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const payload = {
+      key: siteServiceForm.key.trim(),
+      title: siteServiceForm.title.trim(),
+      summary: siteServiceForm.summary.trim(),
+      detail: siteServiceForm.detail.trim(),
+      imageUrl: siteServiceForm.imageUrl.trim(),
+      sortOrder: parseSortOrder(siteServiceForm.sortOrder),
+      isActive: siteServiceForm.isActive,
+    };
+
+    const response = await authorizedFetch(
+      editingSiteServiceKey ? `/api/services/${encodeURIComponent(editingSiteServiceKey)}` : '/api/services',
+      {
+        method: editingSiteServiceKey ? 'PUT' : 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+    const data = (await response.json().catch(() => null)) as { services?: SiteService[] } | null;
+
+    if (response.status === 401) {
+      setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+      await logoutAdmin();
+      return;
+    }
+
+    if (!response.ok || !data?.services) {
+      setAdminMessage('Hizmet kaydedilemedi. Başlık, özet ve detay alanlarını kontrol edin.');
+      return;
+    }
+
+    setSiteServices(data.services);
+    setAdminMessage(editingSiteServiceKey ? 'Hizmet güncellendi.' : 'Yeni hizmet eklendi.');
+    closeSiteServiceModal();
+  };
+
+  const deleteSiteService = async () => {
+    if (!editingSiteServiceKey) {
+      return;
+    }
+
+    const response = await authorizedFetch(`/api/services/${encodeURIComponent(editingSiteServiceKey)}`, {
+      method: 'DELETE',
+    });
+    const data = (await response.json().catch(() => null)) as { services?: SiteService[] } | null;
+
+    if (response.status === 401) {
+      setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+      await logoutAdmin();
+      return;
+    }
+
+    if (!response.ok || !data?.services) {
+      setAdminMessage('Hizmet silinemedi.');
+      return;
+    }
+
+    setSiteServices(data.services);
+    setAdminMessage('Hizmet silindi.');
+    closeSiteServiceModal();
   };
 
   if (isPanelPage && authStatus === 'checking') {
@@ -3960,6 +4368,16 @@ function App() {
             )}
             {canAccessModule('settings') && (
               <button
+                className={`adminNavItem${activeAdminSection === 'services' ? ' active' : ''}`}
+                type="button"
+                onClick={() => setAdminSection('services')}
+              >
+                <Settings size={20} strokeWidth={2.2} />
+                <span>Hizmet Alanları</span>
+              </button>
+            )}
+            {canAccessModule('settings') && (
+              <button
                 className={`adminNavItem${activeAdminSection === 'references' ? ' active' : ''}`}
                 type="button"
                 onClick={() => setAdminSection('references')}
@@ -4071,15 +4489,17 @@ function App() {
                       ? 'Görsel Yönetimi'
                       : activeAdminSection === 'references'
                         ? 'Referanslar'
-                        : activeAdminSection === 'quoteQuestions'
-                          ? 'Teklif Soruları'
-                          : activeAdminSection === 'quoteRequests'
-                            ? 'Teklif Talepleri'
-                            : activeAdminSection === 'serviceRequests'
-                              ? 'Servis Talepleri'
-                              : activeAdminSection === 'users'
-                                ? 'Kullanıcılar'
-                                : 'Veritabanı'}
+                        : activeAdminSection === 'services'
+                          ? 'Hizmet Alanları'
+                          : activeAdminSection === 'quoteQuestions'
+                            ? 'Teklif Soruları'
+                            : activeAdminSection === 'quoteRequests'
+                              ? 'Teklif Talepleri'
+                              : activeAdminSection === 'serviceRequests'
+                                ? 'Servis Talepleri'
+                                : activeAdminSection === 'users'
+                                  ? 'Kullanıcılar'
+                                  : 'Veritabanı'}
               </h1>
             </div>
             {activeAdminSection === 'products' ? (
@@ -4107,6 +4527,12 @@ function App() {
               <div className="adminTopbarActions">
                 <button type="button" onClick={openNewReferenceModal}>
                   Yeni Referans
+                </button>
+              </div>
+            ) : activeAdminSection === 'services' ? (
+              <div className="adminTopbarActions">
+                <button type="button" onClick={openNewSiteServiceModal}>
+                  Yeni Hizmet
                 </button>
               </div>
             ) : activeAdminSection === 'assets' ? (
@@ -4293,6 +4719,43 @@ function App() {
                       <span>{reference.isActive ? 'Yayında' : 'Pasif'} / Sıra {reference.sortOrder}</span>
                       <h2>{reference.title}</h2>
                       <p>{reference.description || 'Detay metni eklenmedi.'}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : activeAdminSection === 'services' ? (
+            <>
+              <div className="adminStats">
+                <article>
+                  <span>Toplam Hizmet</span>
+                  <strong>{siteServices.length}</strong>
+                </article>
+                <article>
+                  <span>Yayında</span>
+                  <strong>{siteServices.filter((service) => service.isActive).length}</strong>
+                </article>
+                <article>
+                  <span>Sıralama</span>
+                  <strong>Panelden</strong>
+                </article>
+              </div>
+
+              <div className="adminProducts adminReferenceGrid">
+                {siteServices.length === 0 ? (
+                  <p className="adminProductEmpty">Henüz hizmet alanı eklenmedi.</p>
+                ) : siteServices.map((service) => (
+                  <button
+                    className={`adminProductCard adminServiceCard${service.isActive ? ' active' : ' passive'}`}
+                    key={service.key}
+                    type="button"
+                    onClick={() => openEditSiteServiceModal(service)}
+                  >
+                    {service.imageUrl ? <img src={service.imageUrl} alt={service.title} /> : <span className="adminServiceImagePlaceholder">Görsel Yok</span>}
+                    <div>
+                      <span>{service.isActive ? 'Yayında' : 'Pasif'} / Sıra {service.sortOrder}</span>
+                      <h2>{service.title}</h2>
+                      <p>{service.summary || 'Özet metni eklenmedi.'}</p>
                     </div>
                   </button>
                 ))}
@@ -5300,28 +5763,16 @@ function App() {
                           <UserRound size={24} strokeWidth={2.2} />
                         )}
                       </div>
-                      <div className="adminImageUploadControl">
-                        <input
-                          value={adminUserForm.avatarUrl}
-                          onChange={(event) => updateAdminUserForm('avatarUrl', event.target.value)}
-                          placeholder="https://... veya görsel yükleyin"
-                        />
-                        <input
-                          ref={userAvatarInputRef}
-                          className="adminHiddenFileInput"
-                          type="file"
-                          accept="image/*"
-                          onChange={uploadAdminUserAvatar}
-                        />
-                        <button
-                          type="button"
-                          disabled={isUploadingUserAvatar}
-                          onClick={() => userAvatarInputRef.current?.click()}
-                        >
-                          <Upload size={17} strokeWidth={2.4} />
-                          {isUploadingUserAvatar ? 'Yükleniyor...' : 'Avatar Yükle'}
-                        </button>
-                      </div>
+                      <AdminImageUploadControl
+                        value={adminUserForm.avatarUrl}
+                        onUrlChange={(value) => updateAdminUserForm('avatarUrl', value)}
+                        inputRef={userAvatarInputRef}
+                        onFileInputChange={uploadAdminUserAvatar}
+                        onFileDrop={uploadAdminUserAvatarFile}
+                        buttonLabel={isUploadingUserAvatar ? 'Yükleniyor...' : 'Yükle / Bırak'}
+                        disabled={isUploadingUserAvatar}
+                        placeholder="https://... veya sürükle bırak"
+                      />
                     </div>
                   </label>
 
@@ -5491,28 +5942,16 @@ function App() {
                       {quoteQuestionForm.imageUrl && (
                         <img className="adminQuoteQuestionImagePreview" src={quoteQuestionForm.imageUrl} alt="Soru görseli önizlemesi" />
                       )}
-                      <div className="adminImageUploadControl">
-                        <input
-                          value={quoteQuestionForm.imageUrl}
-                          onChange={(event) => updateQuoteQuestionForm('imageUrl', event.target.value)}
-                          placeholder="https://... veya görsel yükleyin"
-                        />
-                        <input
-                          ref={quoteQuestionImageInputRef}
-                          className="adminHiddenFileInput"
-                          type="file"
-                          accept="image/*"
-                          onChange={uploadQuoteQuestionImage}
-                        />
-                        <button
-                          type="button"
-                          disabled={isUploadingQuoteQuestionImage}
-                          onClick={() => quoteQuestionImageInputRef.current?.click()}
-                        >
-                          <Upload size={17} strokeWidth={2.4} />
-                          {isUploadingQuoteQuestionImage ? 'Yükleniyor...' : 'Görsel Yükle'}
-                        </button>
-                      </div>
+                      <AdminImageUploadControl
+                        value={quoteQuestionForm.imageUrl}
+                        onUrlChange={(value) => updateQuoteQuestionForm('imageUrl', value)}
+                        inputRef={quoteQuestionImageInputRef}
+                        onFileInputChange={uploadQuoteQuestionImage}
+                        onFileDrop={uploadQuoteQuestionImageFile}
+                        buttonLabel={isUploadingQuoteQuestionImage ? 'Yükleniyor...' : 'Yükle / Bırak'}
+                        disabled={isUploadingQuoteQuestionImage}
+                        placeholder="https://... veya sürükle bırak"
+                      />
                     </div>
                   </label>
 
@@ -5732,30 +6171,45 @@ function App() {
                       />
                     </label>
 
+                    <label>
+                      SEO Başlık
+                      <input
+                        value={categoryForm.metaTitle}
+                        onChange={(event) => updateCategoryForm('metaTitle', event.target.value)}
+                        placeholder="Arama motoru başlığı"
+                      />
+                    </label>
+
+                    <label>
+                      Anahtar Kelimeler
+                      <input
+                        value={categoryForm.metaKeywords}
+                        onChange={(event) => updateCategoryForm('metaKeywords', event.target.value)}
+                        placeholder="kelime, kelime grubu"
+                      />
+                    </label>
+
+                    <label className="adminFormWide">
+                      SEO Açıklama
+                      <textarea
+                        value={categoryForm.metaDescription}
+                        onChange={(event) => updateCategoryForm('metaDescription', event.target.value)}
+                        placeholder="Arama sonucu açıklama metni"
+                      />
+                    </label>
+
                     <label className="adminFormWide">
                       Kategori Görseli
-                      <div className="adminImageUploadControl">
-                        <input
-                          value={categoryForm.image}
-                          onChange={(event) => updateCategoryForm('image', event.target.value)}
-                          placeholder="https://... veya görsel yükleyin"
-                        />
-                        <input
-                          ref={categoryImageInputRef}
-                          className="adminHiddenFileInput"
-                          type="file"
-                          accept="image/*"
-                          onChange={uploadCategoryImage}
-                        />
-                        <button
-                          type="button"
-                          disabled={isUploadingCategoryImage}
-                          onClick={() => categoryImageInputRef.current?.click()}
-                        >
-                          <Upload size={17} strokeWidth={2.4} />
-                          {isUploadingCategoryImage ? 'Yükleniyor...' : 'Görsel Yükle'}
-                        </button>
-                      </div>
+                      <AdminImageUploadControl
+                        value={categoryForm.image}
+                        onUrlChange={(value) => updateCategoryForm('image', value)}
+                        inputRef={categoryImageInputRef}
+                        onFileInputChange={uploadCategoryImage}
+                        onFileDrop={uploadCategoryImageFile}
+                        buttonLabel={isUploadingCategoryImage ? 'Yükleniyor...' : 'Yükle / Bırak'}
+                        disabled={isUploadingCategoryImage}
+                        placeholder="https://... veya sürükle bırak"
+                      />
                       <div className="adminImageVariants">
                         {[
                           { key: 'square', label: 'Kare', url: categoryForm.imageSquare },
@@ -5795,6 +6249,135 @@ function App() {
                     </div>
                   </form>
                 </div>
+              </motion.section>
+            </motion.div>
+          )}
+
+          {isSiteServiceModalOpen && (
+            <motion.div
+              className="adminModalOverlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeSiteServiceModal}
+            >
+              <motion.section
+                className="adminProductModal adminReferenceModal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="site-service-modal-title"
+                initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                onClick={(modalEvent) => modalEvent.stopPropagation()}
+              >
+                <div className="adminModalHeader">
+                  <div>
+                    <p>Hizmet Alanı Yönetimi</p>
+                    <h2 id="site-service-modal-title">{editingSiteServiceKey ? 'Hizmeti Düzenle' : 'Yeni Hizmet'}</h2>
+                  </div>
+                  <button type="button" aria-label="Modalı kapat" onClick={closeSiteServiceModal}>
+                    <X size={20} strokeWidth={2.2} />
+                  </button>
+                </div>
+
+                <form className="adminProductForm adminReferenceForm" onSubmit={saveSiteService}>
+                  <label>
+                    Kayıt Anahtarı
+                    <input
+                      required
+                      disabled={Boolean(editingSiteServiceKey)}
+                      value={siteServiceForm.key}
+                      onChange={(event) => updateSiteServiceForm('key', event.target.value)}
+                      placeholder="hizmetAnahtari"
+                    />
+                  </label>
+                  <label>
+                    Sıra
+                    <input
+                      min="0"
+                      step="1"
+                      type="number"
+                      value={siteServiceForm.sortOrder}
+                      onChange={(event) => updateSiteServiceForm('sortOrder', event.target.value)}
+                      placeholder="0"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    Başlık
+                    <input
+                      required
+                      value={siteServiceForm.title}
+                      onChange={(event) => updateSiteServiceTitle(event.target.value)}
+                      placeholder="Hizmet başlığı"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    Özet
+                    <textarea
+                      required
+                      rows={3}
+                      value={siteServiceForm.summary}
+                      onChange={(event) => updateSiteServiceForm('summary', event.target.value)}
+                      placeholder="Ana sayfa kartında görünecek kısa özet"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    Detaylı Metin
+                    <textarea
+                      required
+                      rows={6}
+                      value={siteServiceForm.detail}
+                      onChange={(event) => updateSiteServiceForm('detail', event.target.value)}
+                      placeholder="Modal içinde gösterilecek detaylı metin"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    Görsel
+                    <AdminImageUploadControl
+                      value={siteServiceForm.imageUrl}
+                      onUrlChange={(value) => updateSiteServiceForm('imageUrl', value)}
+                      inputRef={siteServiceImageInputRef}
+                      onFileInputChange={uploadSiteServiceImage}
+                      onFileDrop={uploadSiteServiceImageFile}
+                      buttonLabel={isUploadingSiteServiceImage ? 'Yükleniyor...' : 'Yükle / Bırak'}
+                      disabled={isUploadingSiteServiceImage}
+                      placeholder="https://... veya sürükle bırak"
+                    />
+                    {siteServiceForm.imageUrl && (
+                      <button
+                        className="adminReferencePreviewButton"
+                        type="button"
+                        onClick={() =>
+                          setImagePreview({ title: siteServiceForm.title || 'Hizmet görseli', url: siteServiceForm.imageUrl })
+                        }
+                      >
+                        <img src={siteServiceForm.imageUrl} alt="" />
+                        <span>Önizle</span>
+                      </button>
+                    )}
+                  </label>
+
+                  <div className="adminFormActions">
+                    <label className="adminStatusSwitch">
+                      <input
+                        checked={siteServiceForm.isActive}
+                        type="checkbox"
+                        onChange={(event) => updateSiteServiceForm('isActive', event.target.checked)}
+                      />
+                      <span />
+                      <strong>{siteServiceForm.isActive ? 'Yayında' : 'Pasif'}</strong>
+                    </label>
+                    {editingSiteServiceKey && (
+                      <button className="dangerButton" type="button" onClick={deleteSiteService}>
+                        Sil
+                      </button>
+                    )}
+                    <button type="button" onClick={closeSiteServiceModal}>Vazgeç</button>
+                    <button type="submit">{editingSiteServiceKey ? 'Güncelle' : 'Kaydet'}</button>
+                  </div>
+                </form>
               </motion.section>
             </motion.div>
           )}
@@ -5870,29 +6453,17 @@ function App() {
                   </label>
                   <label className="adminFormWide">
                     Logo / Görsel
-                    <div className="adminImageUploadControl">
-                      <input
-                        required
-                        value={referenceForm.imageUrl}
-                        onChange={(event) => updateReferenceForm('imageUrl', event.target.value)}
-                        placeholder="https://... veya görsel yükleyin"
-                      />
-                      <input
-                        ref={referenceImageInputRef}
-                        className="adminHiddenFileInput"
-                        type="file"
-                        accept="image/*"
-                        onChange={uploadReferenceImage}
-                      />
-                      <button
-                        type="button"
-                        disabled={isUploadingReferenceImage}
-                        onClick={() => referenceImageInputRef.current?.click()}
-                      >
-                        <Upload size={17} strokeWidth={2.4} />
-                        {isUploadingReferenceImage ? 'Yükleniyor...' : 'Görsel Yükle'}
-                      </button>
-                    </div>
+                    <AdminImageUploadControl
+                      required
+                      value={referenceForm.imageUrl}
+                      onUrlChange={(value) => updateReferenceForm('imageUrl', value)}
+                      inputRef={referenceImageInputRef}
+                      onFileInputChange={uploadReferenceImage}
+                      onFileDrop={uploadReferenceImageFile}
+                      buttonLabel={isUploadingReferenceImage ? 'Yükleniyor...' : 'Yükle / Bırak'}
+                      disabled={isUploadingReferenceImage}
+                      placeholder="https://... veya sürükle bırak"
+                    />
                     {referenceForm.imageUrl && (
                       <button
                         className="adminReferencePreviewButton"
@@ -6000,14 +6571,16 @@ function App() {
                   </label>
                   <label className="adminFormWide">
                     Görsel URL
-                    <div className="adminImageUploadControl">
-                      <input value={blogPostForm.image} onChange={(event) => updateBlogPostForm('image', event.target.value)} />
-                      <input ref={blogImageInputRef} className="adminHiddenFileInput" type="file" accept="image/*" onChange={uploadBlogImage} />
-                      <button type="button" disabled={isUploadingBlogImage} onClick={() => blogImageInputRef.current?.click()}>
-                        <Upload size={17} strokeWidth={2.4} />
-                        {isUploadingBlogImage ? 'Yükleniyor...' : 'Görsel Yükle'}
-                      </button>
-                    </div>
+                    <AdminImageUploadControl
+                      value={blogPostForm.image}
+                      onUrlChange={(value) => updateBlogPostForm('image', value)}
+                      inputRef={blogImageInputRef}
+                      onFileInputChange={uploadBlogImage}
+                      onFileDrop={uploadBlogImageFile}
+                      buttonLabel={isUploadingBlogImage ? 'Yükleniyor...' : 'Yükle / Bırak'}
+                      disabled={isUploadingBlogImage}
+                      placeholder="https://... veya sürükle bırak"
+                    />
                   </label>
                   <label>
                     Görsel Alt Metni
@@ -6171,30 +6744,45 @@ function App() {
                     />
                   </label>
 
+                  <label>
+                    SEO Başlık
+                    <input
+                      value={productForm.metaTitle}
+                      onChange={(event) => updateProductForm('metaTitle', event.target.value)}
+                      placeholder="Arama motoru başlığı"
+                    />
+                  </label>
+
+                  <label>
+                    Anahtar Kelimeler
+                    <input
+                      value={productForm.metaKeywords}
+                      onChange={(event) => updateProductForm('metaKeywords', event.target.value)}
+                      placeholder="kelime, kelime grubu"
+                    />
+                  </label>
+
+                  <label className="adminFormWide">
+                    SEO Açıklama
+                    <textarea
+                      value={productForm.metaDescription}
+                      onChange={(event) => updateProductForm('metaDescription', event.target.value)}
+                      placeholder="Arama sonucu açıklama metni"
+                    />
+                  </label>
+
                   <label className="adminFormWide">
                     Görsel URL
-                    <div className="adminImageUploadControl">
-                      <input
-                        value={productForm.image}
-                        onChange={(event) => updateProductForm('image', event.target.value)}
-                        placeholder="https://..."
-                      />
-                      <input
-                        ref={productImageInputRef}
-                        className="adminHiddenFileInput"
-                        type="file"
-                        accept="image/*"
-                        onChange={uploadProductImage}
-                      />
-                      <button
-                        type="button"
-                        disabled={isUploadingProductImage}
-                        onClick={() => productImageInputRef.current?.click()}
-                      >
-                        <Upload size={17} strokeWidth={2.4} />
-                        {isUploadingProductImage ? 'Yükleniyor...' : 'Görsel Yükle'}
-                      </button>
-                    </div>
+                    <AdminImageUploadControl
+                      value={productForm.image}
+                      onUrlChange={(value) => updateProductForm('image', value)}
+                      inputRef={productImageInputRef}
+                      onFileInputChange={uploadProductImage}
+                      onFileDrop={uploadProductImageFile}
+                      buttonLabel={isUploadingProductImage ? 'Yükleniyor...' : 'Yükle / Bırak'}
+                      disabled={isUploadingProductImage}
+                      placeholder="https://... veya sürükle bırak"
+                    />
                     <div className="adminImageVariants">
                       {[
                         { key: 'square', label: 'Kare', url: productForm.imageSquare },
@@ -6820,7 +7408,7 @@ function App() {
                             ) : question.answerType === 'number' ? (
                               <input
                                 required={question.isRequired}
-                                step={0.1}
+                                step={getQuoteNumberStep(question)}
                                 type="number"
                                 value={(quoteAnswers[question.id] as string | undefined) ?? ''}
                                 onChange={(event) => updateQuoteAnswer(question, event.target.value)}
@@ -6832,7 +7420,7 @@ function App() {
                                   const numberValue = Number(event.target.value);
 
                                   if (Number.isFinite(numberValue)) {
-                                    updateQuoteAnswer(question, numberValue.toFixed(Math.max(question.decimalPlaces, 2)));
+                                    updateQuoteAnswer(question, formatQuoteNumberAnswer(numberValue, question));
                                   }
                                 }}
                                 placeholder="Sayı girin"
@@ -7245,41 +7833,62 @@ function App() {
       <section className="services">
         <h2>Hizmet Alanları</h2>
         <div className="grid">
-          <article>
-            <h3>Bahçe Kapısı Motorları</h3>
-            <p>
-              Yana kayar ve kanatlı kapılar için motor, kumanda, fotosel ve
-              aksesuar çözümleri.
-            </p>
-          </article>
-          <article>
-            <h3>Otomatik Bariyer Sistemleri</h3>
-            <p>
-              Site, fabrika, otopark ve işletme girişleri için profesyonel
-              bariyer sistemleri.
-            </p>
-          </article>
-          <article>
-            <h3>Fotoselli Kapılar</h3>
-            <p>
-              Mağaza, hastane, ofis ve yoğun geçiş alanları için otomatik cam
-              kapı sistemleri.
-            </p>
-          </article>
-          <article>
-            <h3>Plaka Tanıma Sistemleri</h3>
-            <p>
-              Araç giriş kontrolü, ambulans geçiş önceliği ve yetkili araç geçiş
-              çözümleri.
-            </p>
-          </article>
+          {siteServices.map((service) => (
+            <button className="serviceAreaCard" type="button" key={service.key} onClick={() => setSelectedSiteService(service)}>
+              <h3>{service.title}</h3>
+              <p>{service.summary}</p>
+            </button>
+          ))}
         </div>
       </section>
+
+      <AnimatePresence>
+        {selectedSiteService && (
+          <motion.div
+            className="quoteModalOverlay serviceDetailOverlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            onClick={() => setSelectedSiteService(null)}
+          >
+            <motion.section
+              className="quoteModal serviceDetailModal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="service-detail-title"
+              initial={{ opacity: 0, y: 24, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 16, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 190, damping: 24 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                className="quoteModalClose"
+                type="button"
+                aria-label="Hizmet detayını kapat"
+                onClick={() => setSelectedSiteService(null)}
+              >
+                <X size={22} strokeWidth={2.2} />
+              </button>
+
+              <div className="quoteModalContent serviceDetailContent">
+                {selectedSiteService.imageUrl && (
+                  <img src={selectedSiteService.imageUrl} alt={selectedSiteService.title} />
+                )}
+                <p className="quoteModalEyebrow">Hizmet Alanı</p>
+                <h2 id="service-detail-title">{selectedSiteService.title}</h2>
+                <strong>{selectedSiteService.summary}</strong>
+                <p>{selectedSiteService.detail}</p>
+              </div>
+            </motion.section>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {activeSiteReferences.length > 0 && (
         <section className="referenceSection" id="referanslar">
           <div className="referenceHeader">
-            <p className="eyebrow">Referanslar</p>
             <h2>Tecrübemize güvenenler</h2>
           </div>
 
