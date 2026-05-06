@@ -1,1 +1,2 @@
-ALTER TABLE contact_settings ADD COLUMN head_html TEXT NOT NULL DEFAULT '';
+-- head_html ensureContactSettingsTable (src/index.ts) ile eklenir; mevcut DB'de sütun varsa ALTER çakışır.
+SELECT 1;

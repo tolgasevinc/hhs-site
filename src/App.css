@@ -1435,6 +1435,20 @@ input[type='radio'] {
   padding-top: 24px;
 }
 
+.adminSettingsLead {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(37, 54, 105, 0.06);
+  color: var(--color-dark-gray);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.adminSettingsLead strong {
+  color: var(--color-navy);
+}
+
 .adminToggleRow {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;

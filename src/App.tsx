@@ -1,5 +1,4 @@
 import { type ChangeEvent, type DragEvent, type FormEvent, type MouseEvent, type PointerEvent, type RefObject, useCallback, useEffect, useRef, useState } from 'react';
-import { Canvas } from '@react-three/fiber';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import {
   Bell,
@@ -10,6 +9,7 @@ import {
   Database,
   ExternalLink,
   FileText,
+  Layers,
   LockKeyhole,
   LogOut,
   Mail,
@@ -27,8 +27,9 @@ import {
   UserRound,
   X,
 } from 'lucide-react';
-import { EnergyRing, ShaderPlane } from './components/ui/background-paper-shaders';
-import { applyInjectedHeadHtml } from './headInject';
+import PaperShaderBackground from './components/ui/PaperShaderBackground';
+import { pushFormSubmitToDataLayer } from './dataLayer';
+import { applyInjectedBodyHtml, applyInjectedHeadHtml } from './headInject';
 import './App.css';
 
 const headerItemAnimation = {
@@ -84,6 +85,21 @@ type AdminCategory = {
   imageHorizontal: string;
   imageVertical: string;
   sortOrder: number;
+  pageSlug?: string;
+};
+
+type SitePage = {
+  key: string;
+  slug: string;
+  title: string;
+  htmlContent: string;
+  metaTitle: string;
+  metaKeywords: string;
+  metaDescription: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type BlogTaxonomyItem = {
@@ -214,6 +230,19 @@ type CategoryFormState = {
   imageHorizontal: string;
   imageVertical: string;
   sortOrder: string;
+  pageSlug: string;
+};
+
+type SitePageFormState = {
+  key: string;
+  slug: string;
+  title: string;
+  htmlContent: string;
+  metaTitle: string;
+  metaKeywords: string;
+  metaDescription: string;
+  sortOrder: string;
+  isActive: boolean;
 };
 
 type AssetItem = {
@@ -433,6 +462,7 @@ type ContactSettings = {
   appleMapUrl: string;
   footerDescription: string;
   headHtml: string;
+  bodyHtml: string;
 };
 
 type PushoverSettings = {
@@ -543,12 +573,13 @@ type AdminSection =
   | 'assets'
   | 'services'
   | 'references'
+  | 'sitePages'
   | 'quoteQuestions'
   | 'quoteRequests'
   | 'serviceRequests'
   | 'users'
   | 'database';
-type SettingsTab = 'footer' | 'contact' | 'googleAnalytics' | 'pushover';
+type SettingsTab = 'footer' | 'contact' | 'tagManager' | 'pushover';
 
 type DatabaseColumn = {
   name: string;
@@ -626,6 +657,7 @@ const defaultContactSettings: ContactSettings = {
   appleMapUrl: '',
   footerDescription: 'Otomatik kapı, bariyer ve geçiş kontrol sistemlerinde keşif, satış, montaj ve teknik destek.',
   headHtml: '',
+  bodyHtml: '',
 };
 
 const defaultPushoverSettings: PushoverSettings = {
@@ -677,6 +709,7 @@ const serializeContactSettingsPayload = (form: ContactSettings): ContactSettings
   appleMapUrl: form.appleMapUrl.trim(),
   footerDescription: form.footerDescription.trim(),
   headHtml: form.headHtml.trim(),
+  bodyHtml: form.bodyHtml.trim(),
 });
 
 const serviceRequestTypes = [
@@ -772,6 +805,19 @@ const emptyCategoryForm: CategoryFormState = {
   imageHorizontal: '',
   imageVertical: '',
   sortOrder: '0',
+  pageSlug: '',
+};
+
+const emptySitePageForm: SitePageFormState = {
+  key: '',
+  slug: '',
+  title: '',
+  htmlContent: '',
+  metaTitle: '',
+  metaKeywords: '',
+  metaDescription: '',
+  sortOrder: '0',
+  isActive: true,
 };
 
 const parseSortOrder = (value: string) => {
@@ -1097,6 +1143,7 @@ function App() {
   const isBlogIndexPage = window.location.pathname.toLowerCase() === '/blog';
   const isServicesPage = window.location.pathname.toLowerCase() === '/hizmetler';
   const blogSlug = window.location.pathname.match(/^\/blog\/([^/]+)$/)?.[1] ?? '';
+  const solutionPageSlug = window.location.pathname.match(/^\/cozum\/([^/]+)$/i)?.[1] ?? '';
   const [language, setLanguage] = useState('TR');
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [isServiceRequestModalOpen, setIsServiceRequestModalOpen] = useState(false);
@@ -1116,6 +1163,8 @@ function App() {
   const [adminProductCategoryFilter, setAdminProductCategoryFilter] = useState('');
   const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
   const [selectedBlogPost, setSelectedBlogPost] = useState<BlogPost | null>(null);
+  const [sitePages, setSitePages] = useState<SitePage[]>([]);
+  const [selectedSitePage, setSelectedSitePage] = useState<SitePage | null>(null);
   const [currentBlogPage, setCurrentBlogPage] = useState(1);
   const [isLoadingMoreBlogPosts, setIsLoadingMoreBlogPosts] = useState(false);
   const [hasMoreBlogPosts, setHasMoreBlogPosts] = useState(false);
@@ -1146,6 +1195,7 @@ function App() {
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isReferenceModalOpen, setIsReferenceModalOpen] = useState(false);
   const [isSiteServiceModalOpen, setIsSiteServiceModalOpen] = useState(false);
+  const [isSitePageModalOpen, setIsSitePageModalOpen] = useState(false);
   const [isQuoteQuestionModalOpen, setIsQuoteQuestionModalOpen] = useState(false);
   const [isSavingSocialLinks, setIsSavingSocialLinks] = useState(false);
   const [isSavingContactSettings, setIsSavingContactSettings] = useState(false);
@@ -1174,6 +1224,7 @@ function App() {
   const [isConfirmingBlogDelete, setIsConfirmingBlogDelete] = useState(false);
   const [isConfirmingReferenceDelete, setIsConfirmingReferenceDelete] = useState(false);
   const [isConfirmingSiteServiceDelete, setIsConfirmingSiteServiceDelete] = useState(false);
+  const [isConfirmingSitePageDelete, setIsConfirmingSitePageDelete] = useState(false);
   const [confirmingAssetDeleteKey, setConfirmingAssetDeleteKey] = useState('');
   const [confirmingQuoteRequestDeleteId, setConfirmingQuoteRequestDeleteId] = useState('');
   const [confirmingServiceRequestDeleteId, setConfirmingServiceRequestDeleteId] = useState('');
@@ -1200,12 +1251,14 @@ function App() {
   const [copyingQuoteQuestionId, setCopyingQuoteQuestionId] = useState<string | null>(null);
   const [editingReferenceKey, setEditingReferenceKey] = useState<string | null>(null);
   const [editingSiteServiceKey, setEditingSiteServiceKey] = useState<string | null>(null);
+  const [editingSitePageKey, setEditingSitePageKey] = useState<string | null>(null);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [productForm, setProductForm] = useState<ProductFormState>(createEmptyProductForm());
   const [blogPostForm, setBlogPostForm] = useState<BlogPostFormState>(createEmptyBlogPostForm());
   const [categoryForm, setCategoryForm] = useState<CategoryFormState>(emptyCategoryForm);
   const [referenceForm, setReferenceForm] = useState<ReferenceFormState>(emptyReferenceForm);
   const [siteServiceForm, setSiteServiceForm] = useState<SiteServiceFormState>(emptySiteServiceForm);
+  const [sitePageForm, setSitePageForm] = useState<SitePageFormState>(emptySitePageForm);
   const [adminUserForm, setAdminUserForm] = useState<AdminUserFormState>(emptyAdminUserForm);
   const [adminMessage, setAdminMessage] = useState('');
   const [adminToken, setAdminToken] = useState('');
@@ -1224,6 +1277,7 @@ function App() {
   const siteServiceImageInputRef = useRef<HTMLInputElement>(null);
   const siteServiceIconInputRef = useRef<HTMLInputElement>(null);
   const siteServiceFormRef = useRef<HTMLFormElement>(null);
+  const sitePageFormRef = useRef<HTMLFormElement>(null);
   const cropPointRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const cropPreviewImageRefs = useRef<(HTMLImageElement | null)[]>([]);
   const userAvatarInputRef = useRef<HTMLInputElement>(null);
@@ -1291,6 +1345,7 @@ function App() {
     if (
       section === 'services' ||
       section === 'references' ||
+      section === 'sitePages' ||
       section === 'quoteQuestions' ||
       section === 'quoteRequests' ||
       section === 'serviceRequests'
@@ -1317,6 +1372,8 @@ function App() {
             ? 'services'
             : canAccessAdminSection('references')
               ? 'references'
+              : canAccessAdminSection('sitePages')
+                ? 'sitePages'
               : canAccessAdminSection('quoteRequests')
                 ? 'quoteRequests'
                 : canAccessAdminSection('serviceRequests')
@@ -1330,10 +1387,14 @@ function App() {
   const emailHref = createMailHref(contactSettings.email);
 
   useEffect(() => {
-    const undo = applyInjectedHeadHtml(contactSettings.headHtml);
+    const undoHead = applyInjectedHeadHtml(contactSettings.headHtml);
+    const undoBody = applyInjectedBodyHtml(contactSettings.bodyHtml);
 
-    return undo;
-  }, [contactSettings.headHtml]);
+    return () => {
+      undoHead();
+      undoBody();
+    };
+  }, [contactSettings.headHtml, contactSettings.bodyHtml]);
   const selectedServiceRequestType =
     serviceRequestTypes.find((requestType) => requestType.value === serviceRequestForm.requestType) ??
     serviceRequestTypes[0];
@@ -1343,6 +1404,7 @@ function App() {
 
       return {
         title: category.title,
+        pageSlug: category.pageSlug?.trim() ?? '',
         url:
           category.imageHorizontal ||
           category.image ||
@@ -1355,7 +1417,7 @@ function App() {
           '',
       };
     })
-    .filter((item): item is { title: string; url: string } => Boolean(item.url));
+    .filter((item): item is { title: string; url: string; pageSlug: string } => Boolean(item.url));
   const quoteCategories = adminCategories.map((category) => {
     const fallbackProduct = adminProducts.find((product) => product.categoryKey === category.key);
 
@@ -1501,6 +1563,13 @@ function App() {
   };
 
   const openCategoryGalleryImage = (index: number) => {
+    const entry = categoryGalleryImages[index];
+
+    if (entry?.pageSlug) {
+      window.location.href = `/cozum/${encodeURIComponent(entry.pageSlug)}`;
+      return;
+    }
+
     setSelectedCategoryGalleryIndex(index);
   };
 
@@ -1675,6 +1744,7 @@ function App() {
           blogPostsResult,
           blogCategoriesResult,
           blogTagsResult,
+          sitePagesResult,
         ] =
           await Promise.all([
             readApiJson<{ products?: AdminProduct[] }>(fetch(apiUrl('/api/products'))),
@@ -1718,6 +1788,11 @@ function App() {
             ),
             readApiJson<{ categories?: BlogTaxonomyItem[] }>(fetch(apiUrl('/api/blog-categories'))),
             readApiJson<{ tags?: BlogTaxonomyItem[] }>(fetch(apiUrl('/api/blog-tags'))),
+            readApiJson<{ pages?: SitePage[] }>(
+              isPanelPage && adminUser?.modules.includes('settings')
+                ? authorizedFetch('/api/site-pages')
+                : fetch(apiUrl('/api/site-pages')),
+            ),
           ]);
         const productsData = productsResult.data ?? {};
         const categoriesData = categoriesResult.data ?? {};
@@ -1732,6 +1807,7 @@ function App() {
         const blogPostsData = blogPostsResult.data ?? {};
         const blogCategoriesData = blogCategoriesResult.data ?? {};
         const blogTagsData = blogTagsResult.data ?? {};
+        const sitePagesData = sitePagesResult.data ?? {};
 
         if (productsData.products) {
           setAdminProducts(productsData.products);
@@ -1749,8 +1825,9 @@ function App() {
         }
 
         if (contactSettingsData.settings) {
-          setContactSettings(contactSettingsData.settings);
-          setContactSettingsForm(contactSettingsData.settings);
+          const merged = { ...defaultContactSettings, ...contactSettingsData.settings };
+          setContactSettings(merged);
+          setContactSettingsForm(merged);
         }
 
         if (siteServicesData.services) {
@@ -1795,10 +1872,24 @@ function App() {
           setBlogTags(blogTagsData.tags);
         }
 
+        if (sitePagesData.pages) {
+          setSitePages(sitePagesData.pages);
+        }
+
         if (blogSlug) {
           const blogPostResponse = await fetch(apiUrl(`/api/blog-posts/${encodeURIComponent(blogSlug)}`));
           const blogPostData = (await blogPostResponse.json().catch(() => null)) as { post?: BlogPost } | null;
           setSelectedBlogPost(blogPostData?.post ?? null);
+        } else {
+          setSelectedBlogPost(null);
+        }
+
+        if (solutionPageSlug) {
+          const sitePageResponse = await fetch(apiUrl(`/api/site-pages/${encodeURIComponent(solutionPageSlug)}`));
+          const sitePageData = (await sitePageResponse.json().catch(() => null)) as { page?: SitePage } | null;
+          setSelectedSitePage(sitePageData?.page ?? null);
+        } else {
+          setSelectedSitePage(null);
         }
 
         if (isPanelPage && adminUser?.modules.includes('users')) {
@@ -1830,7 +1921,44 @@ function App() {
     };
 
     void loadCatalog();
-  }, [adminToken, authStatus, adminUser, authorizedFetch, blogSlug, isBlogIndexPage, isPanelPage]);
+  }, [adminToken, authStatus, adminUser, authorizedFetch, blogSlug, solutionPageSlug, isBlogIndexPage, isPanelPage]);
+
+  useEffect(() => {
+    if (!solutionPageSlug || !selectedSitePage) {
+      return;
+    }
+
+    const metaTitle = selectedSitePage.metaTitle.trim() || selectedSitePage.title;
+    document.title = metaTitle.toLowerCase().includes('hhs') ? metaTitle : `${metaTitle} | HHS Otomatik Kapı`;
+
+    const description = selectedSitePage.metaDescription.trim();
+
+    if (description) {
+      let descriptionTag = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
+
+      if (!descriptionTag) {
+        descriptionTag = document.createElement('meta');
+        descriptionTag.setAttribute('name', 'description');
+        document.head.appendChild(descriptionTag);
+      }
+
+      descriptionTag.setAttribute('content', description);
+    }
+
+    const keywords = selectedSitePage.metaKeywords.trim();
+
+    if (keywords) {
+      let keywordsTag = document.querySelector('meta[name="keywords"]') as HTMLMetaElement | null;
+
+      if (!keywordsTag) {
+        keywordsTag = document.createElement('meta');
+        keywordsTag.setAttribute('name', 'keywords');
+        document.head.appendChild(keywordsTag);
+      }
+
+      keywordsTag.setAttribute('content', keywords);
+    }
+  }, [solutionPageSlug, selectedSitePage]);
 
   useEffect(() => {
     const closeModalWithEscape = (event: KeyboardEvent) => {
@@ -1909,6 +2037,13 @@ function App() {
         return;
       }
 
+      if (isSitePageModalOpen) {
+        setIsSitePageModalOpen(false);
+        setEditingSitePageKey(null);
+        setIsConfirmingSitePageDelete(false);
+        return;
+      }
+
       if (isReferenceModalOpen) {
         setIsReferenceModalOpen(false);
         setEditingReferenceKey(null);
@@ -1962,6 +2097,7 @@ function App() {
     isQuoteQuestionModalOpen,
     isReferenceModalOpen,
     isSiteServiceModalOpen,
+    isSitePageModalOpen,
     pendingImageCrop,
     isQuoteModalOpen,
     isServiceRequestModalOpen,
@@ -1984,6 +2120,7 @@ function App() {
       isUserModalOpen ||
       isQuoteQuestionModalOpen ||
       isSiteServiceModalOpen ||
+      isSitePageModalOpen ||
       isReferenceModalOpen ||
       isCategoryModalOpen ||
       isProductModalOpen ||
@@ -2562,6 +2699,73 @@ function App() {
     setIsConfirmingSiteServiceDelete(false);
   };
 
+  const openNewSitePageModal = () => {
+    setEditingSitePageKey(null);
+    setSitePageForm({ ...emptySitePageForm, key: `sayfa_${crypto.randomUUID()}` });
+    setIsConfirmingSitePageDelete(false);
+    setIsSitePageModalOpen(true);
+    setAdminMessage('');
+  };
+
+  const openEditSitePageModal = (page: SitePage) => {
+    setEditingSitePageKey(page.key);
+    setSitePageForm({
+      key: page.key,
+      slug: page.slug,
+      title: page.title,
+      htmlContent: page.htmlContent ?? '',
+      metaTitle: page.metaTitle,
+      metaKeywords: page.metaKeywords,
+      metaDescription: page.metaDescription,
+      sortOrder: String(page.sortOrder ?? 0),
+      isActive: page.isActive,
+    });
+    setIsConfirmingSitePageDelete(false);
+    setIsSitePageModalOpen(true);
+    setAdminMessage('');
+  };
+
+  const closeSitePageModal = () => {
+    setIsSitePageModalOpen(false);
+    setEditingSitePageKey(null);
+    setIsConfirmingSitePageDelete(false);
+  };
+
+  const updateSitePageForm = (field: keyof SitePageFormState, value: string | boolean) => {
+    setSitePageForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }));
+  };
+
+  const updateSitePageTitle = (title: string) => {
+    setSitePageForm((currentForm) => ({
+      ...currentForm,
+      title,
+      key: editingSitePageKey ? currentForm.key : createProductKeyFromTitle(title),
+      slug: editingSitePageKey ? currentForm.slug : createSlugFromTitle(title),
+    }));
+  };
+
+  const submitSitePageForm = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const form = sitePageFormRef.current;
+
+    if (!form) {
+      setAdminMessage('Sayfa formu bulunamadı. Modalı kapatıp tekrar deneyin.');
+      return;
+    }
+
+    if (typeof form.requestSubmit === 'function') {
+      form.requestSubmit();
+      return;
+    }
+
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  };
+
   const updateSiteServiceForm = (field: keyof SiteServiceFormState, value: string | boolean) => {
     setSiteServiceForm((currentForm) => ({
       ...currentForm,
@@ -2787,6 +2991,7 @@ function App() {
       imageHorizontal: categoryImages.imageHorizontal,
       imageVertical: categoryImages.imageVertical,
       sortOrder: String(category.sortOrder ?? 0),
+      pageSlug: category.pageSlug?.trim() ?? '',
     });
   };
 
@@ -3125,7 +3330,7 @@ function App() {
   };
 
   const reloadAdminCatalog = async () => {
-    const [productsResult, categoriesResult, socialLinksResult, contactSettingsResult, siteServicesResult, referencesResult, quoteQuestionsResult, pushoverSettingsResult, blogPostsResult, blogCategoriesResult, blogTagsResult] =
+    const [productsResult, categoriesResult, socialLinksResult, contactSettingsResult, siteServicesResult, referencesResult, quoteQuestionsResult, pushoverSettingsResult, blogPostsResult, blogCategoriesResult, blogTagsResult, sitePagesResult] =
       await Promise.all([
         readApiJson<{ products?: AdminProduct[] }>(fetch(apiUrl('/api/products'))),
         readApiJson<{ categories?: AdminCategory[] }>(fetch(apiUrl('/api/product-categories'))),
@@ -3150,6 +3355,9 @@ function App() {
         ),
         readApiJson<{ categories?: BlogTaxonomyItem[] }>(fetch(apiUrl('/api/blog-categories'))),
         readApiJson<{ tags?: BlogTaxonomyItem[] }>(fetch(apiUrl('/api/blog-tags'))),
+        readApiJson<{ pages?: SitePage[] }>(
+          canAccessModule('settings') ? authorizedFetch('/api/site-pages') : fetch(apiUrl('/api/site-pages')),
+        ),
       ]);
     const productsData = productsResult.data ?? {};
     const categoriesData = categoriesResult.data ?? {};
@@ -3162,6 +3370,7 @@ function App() {
     const blogPostsData = blogPostsResult.data ?? {};
     const blogCategoriesData = blogCategoriesResult.data ?? {};
     const blogTagsData = blogTagsResult.data ?? {};
+    const sitePagesData = sitePagesResult.data ?? {};
 
     if (productsData.products) {
       setAdminProducts(productsData.products);
@@ -3179,8 +3388,9 @@ function App() {
     }
 
     if (contactSettingsData.settings) {
-      setContactSettings(contactSettingsData.settings);
-      setContactSettingsForm(contactSettingsData.settings);
+      const merged = { ...defaultContactSettings, ...contactSettingsData.settings };
+      setContactSettings(merged);
+      setContactSettingsForm(merged);
     }
 
     if (siteServicesData.services) {
@@ -3210,6 +3420,10 @@ function App() {
 
     if (blogTagsData.tags) {
       setBlogTags(blogTagsData.tags);
+    }
+
+    if (sitePagesData.pages) {
+      setSitePages(sitePagesData.pages);
     }
   };
 
@@ -4116,7 +4330,6 @@ function App() {
 
     setIsSubmittingQuoteRequest(true);
     setQuoteSubmitMessage('');
-    const whatsappWindow = window.open('about:blank', '_blank', 'noopener,noreferrer');
 
     const whatsappMessage = isAnonymous
       ? [
@@ -4157,22 +4370,27 @@ function App() {
           whatsappMessage,
         }),
       });
-      const data = (await response.json().catch(() => null)) as { ok?: boolean; whatsappUrl?: string } | null;
+      const data = (await response.json().catch(() => null)) as {
+        ok?: boolean;
+        pushoverSent?: boolean;
+      } | null;
 
-      if (!response.ok || !data?.ok || !data.whatsappUrl) {
-        whatsappWindow?.close();
+      if (!response.ok || !data?.ok) {
         setQuoteSubmitMessage('Teklif bilgileriniz kaydedilemedi. Lütfen tekrar deneyin.');
         return;
       }
 
-      setQuoteSubmitMessage('Bilgileriniz kaydedildi. WhatsApp açılıyor...');
-      if (whatsappWindow) {
-        whatsappWindow.location.href = data.whatsappUrl;
-      } else {
-        window.location.href = data.whatsappUrl;
-      }
+      setQuoteSubmitMessage(
+        data.pushoverSent
+          ? 'Teklif talebiniz alındı. Ekibimize bildirim gönderildi.'
+          : 'Teklif talebiniz alındı. En kısa sürede sizinle iletişime geçeceğiz.',
+      );
+      pushFormSubmitToDataLayer({
+        form_name: 'teklif_formu',
+        product_category: selectedQuoteCategory.title,
+        product_name: selectedQuoteProduct.title,
+      });
     } catch {
-      whatsappWindow?.close();
       setQuoteSubmitMessage('Teklif bilgileriniz kaydedilemedi. Bağlantınızı kontrol edin.');
     } finally {
       setIsSubmittingQuoteRequest(false);
@@ -4217,6 +4435,15 @@ function App() {
         setServiceRequestMessage('Servis kaydı gönderilemedi. Lütfen bilgileri kontrol edip tekrar deneyin.');
         return;
       }
+
+      const serviceProductCategory =
+        adminCategories.find((category) => category.key === serviceRequestForm.productKey)?.title ?? '';
+
+      pushFormSubmitToDataLayer({
+        form_name: 'servis_formu',
+        product_category: serviceProductCategory,
+        product_name: selectedServiceRequestType.label,
+      });
 
       setServiceRequestForm(emptyServiceRequestForm);
       setServiceRequestMessage(
@@ -4439,6 +4666,7 @@ function App() {
       imageHorizontal: categoryForm.imageHorizontal.trim(),
       imageVertical: categoryForm.imageVertical.trim(),
       sortOrder: parseSortOrder(categoryForm.sortOrder),
+      pageSlug: categoryForm.pageSlug.trim(),
     };
 
     const response = await authorizedFetch(
@@ -4461,6 +4689,13 @@ function App() {
     }
 
     if (!response.ok) {
+      const errorData = (await response.json().catch(() => null)) as { error?: string } | null;
+
+      if (response.status === 400 && errorData?.error === 'invalid_page_slug') {
+        setAdminMessage('Seçilen çözüm sayfası bulunamadı. Önce Sayfalar bölümünde slug oluşturun veya alanı boş bırakın.');
+        return;
+      }
+
       setAdminMessage('Kategori kaydedilemedi. Lütfen alanları kontrol edin.');
       return;
     }
@@ -4654,6 +4889,86 @@ function App() {
     closeSiteServiceModal();
   };
 
+  const saveSitePage = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const payload = {
+      key: sitePageForm.key.trim(),
+      slug: sitePageForm.slug.trim(),
+      title: sitePageForm.title.trim(),
+      htmlContent: sitePageForm.htmlContent,
+      metaTitle: sitePageForm.metaTitle.trim(),
+      metaKeywords: sitePageForm.metaKeywords.trim(),
+      metaDescription: sitePageForm.metaDescription.trim(),
+      sortOrder: parseSortOrder(sitePageForm.sortOrder),
+      isActive: sitePageForm.isActive,
+    };
+
+    const response = await authorizedFetch(
+      editingSitePageKey ? `/api/site-pages/${encodeURIComponent(editingSitePageKey)}` : '/api/site-pages',
+      {
+        method: editingSitePageKey ? 'PUT' : 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+
+    if (response.status === 401) {
+      setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+      await logoutAdmin();
+      return;
+    }
+
+    if (response.status === 409) {
+      setAdminMessage('Kayıt anahtarı veya URL slug başka bir sayfada kullanılıyor.');
+      return;
+    }
+
+    if (!response.ok) {
+      setAdminMessage('Sayfa kaydedilemedi. Zorunlu alanları kontrol edin.');
+      return;
+    }
+
+    await reloadAdminCatalog();
+    setAdminMessage(editingSitePageKey ? 'Sayfa güncellendi.' : 'Yeni sayfa eklendi.');
+    closeSitePageModal();
+  };
+
+  const deleteSitePage = async () => {
+    if (!editingSitePageKey) {
+      return;
+    }
+
+    if (!isConfirmingSitePageDelete) {
+      setIsConfirmingSitePageDelete(true);
+      setAdminMessage('Sayfayı silmek için silme ikonuna tekrar tıklayın.');
+      return;
+    }
+
+    const response = await authorizedFetch(`/api/site-pages/${encodeURIComponent(editingSitePageKey)}`, {
+      method: 'DELETE',
+    });
+
+    if (response.status === 401) {
+      setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+      await logoutAdmin();
+      return;
+    }
+
+    const data = (await response.json().catch(() => null)) as { ok?: boolean } | null;
+
+    if (!response.ok || !data?.ok) {
+      setAdminMessage('Sayfa silinemedi.');
+      return;
+    }
+
+    await reloadAdminCatalog();
+    setAdminMessage('Sayfa silindi.');
+    closeSitePageModal();
+  };
+
   if (isPanelPage && authStatus === 'checking') {
     return (
       <main className="adminLoginPage">
@@ -4813,6 +5128,16 @@ function App() {
             )}
             {canAccessModule('settings') && (
               <button
+                className={`adminNavItem${activeAdminSection === 'sitePages' ? ' active' : ''}`}
+                type="button"
+                onClick={() => setAdminSection('sitePages')}
+              >
+                <Layers size={20} strokeWidth={2.2} />
+                <span>Sayfalar</span>
+              </button>
+            )}
+            {canAccessModule('settings') && (
+              <button
                 className={`adminNavItem${activeAdminSection === 'quoteRequests' ? ' active' : ''}`}
                 type="button"
                 onClick={() => {
@@ -4914,17 +5239,19 @@ function App() {
                       ? 'Görsel Yönetimi'
                       : activeAdminSection === 'references'
                         ? 'Referanslar'
-                        : activeAdminSection === 'services'
-                          ? 'Hizmet Alanları'
-                          : activeAdminSection === 'quoteQuestions'
-                            ? 'Teklif Soruları'
-                            : activeAdminSection === 'quoteRequests'
-                              ? 'Teklif Talepleri'
-                              : activeAdminSection === 'serviceRequests'
-                                ? 'Servis Talepleri'
-                                : activeAdminSection === 'users'
-                                  ? 'Kullanıcılar'
-                                  : 'Veritabanı'}
+                        : activeAdminSection === 'sitePages'
+                          ? 'Sayfalar'
+                          : activeAdminSection === 'services'
+                            ? 'Hizmet Alanları'
+                            : activeAdminSection === 'quoteQuestions'
+                              ? 'Teklif Soruları'
+                              : activeAdminSection === 'quoteRequests'
+                                ? 'Teklif Talepleri'
+                                : activeAdminSection === 'serviceRequests'
+                                  ? 'Servis Talepleri'
+                                  : activeAdminSection === 'users'
+                                    ? 'Kullanıcılar'
+                                    : 'Veritabanı'}
               </h1>
             </div>
             {activeAdminSection === 'products' ? (
@@ -4952,6 +5279,12 @@ function App() {
               <div className="adminTopbarActions">
                 <button type="button" onClick={openNewReferenceModal}>
                   Yeni Referans
+                </button>
+              </div>
+            ) : activeAdminSection === 'sitePages' ? (
+              <div className="adminTopbarActions">
+                <button type="button" onClick={openNewSitePageModal}>
+                  Yeni Sayfa
                 </button>
               </div>
             ) : activeAdminSection === 'services' ? (
@@ -5150,6 +5483,46 @@ function App() {
                     </div>
                   </button>
                 ))}
+              </div>
+            </>
+          ) : activeAdminSection === 'sitePages' ? (
+            <>
+              <div className="adminStats">
+                <article>
+                  <span>Toplam Sayfa</span>
+                  <strong>{sitePages.length}</strong>
+                </article>
+                <article>
+                  <span>Yayında</span>
+                  <strong>{sitePages.filter((page) => page.isActive).length}</strong>
+                </article>
+                <article>
+                  <span>URL</span>
+                  <strong>/cozum/slug</strong>
+                </article>
+              </div>
+
+              <div className="adminProducts adminReferenceGrid">
+                {sitePages.length === 0 ? (
+                  <p className="adminProductEmpty">Henüz çözüm sayfası eklenmedi.</p>
+                ) : (
+                  sitePages.map((page) => (
+                    <button
+                      className={`adminProductCard adminServiceCard${page.isActive ? ' active' : ' passive'}`}
+                      key={page.key}
+                      type="button"
+                      onClick={() => openEditSitePageModal(page)}
+                    >
+                      <div>
+                        <span>
+                          {page.isActive ? 'Yayında' : 'Pasif'} / Sıra {page.sortOrder} · /cozum/{page.slug}
+                        </span>
+                        <h2>{page.title}</h2>
+                        <p>Slug: {page.slug}</p>
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
             </>
           ) : activeAdminSection === 'services' ? (
@@ -5976,8 +6349,8 @@ function App() {
                         ? 'Footer'
                         : activeSettingsTab === 'contact'
                           ? 'İletişim Bilgileri'
-                          : activeSettingsTab === 'googleAnalytics'
-                            ? 'Google Analytics'
+                          : activeSettingsTab === 'tagManager'
+                            ? 'Google Analytics ve Etiket Yöneticisi'
                             : 'Pushover Bildirimleri'}
                     </h2>
                   </div>
@@ -6003,11 +6376,11 @@ function App() {
                       İletişim
                     </button>
                     <button
-                      className={activeSettingsTab === 'googleAnalytics' ? 'active' : ''}
+                      className={activeSettingsTab === 'tagManager' ? 'active' : ''}
                       type="button"
-                      onClick={() => setActiveSettingsTab('googleAnalytics')}
+                      onClick={() => setActiveSettingsTab('tagManager')}
                     >
-                      Google Analytics
+                      Google Analytics / GTM
                     </button>
                     <button
                       className={activeSettingsTab === 'pushover' ? 'active' : ''}
@@ -6081,21 +6454,47 @@ function App() {
                         </button>
                       </div>
                     </form>
-                  ) : activeSettingsTab === 'googleAnalytics' ? (
+                  ) : activeSettingsTab === 'tagManager' ? (
                     <form className="adminProductForm adminFooterForm" onSubmit={saveContactSettings}>
+                      <p className="adminSettingsLead">
+                        <strong>Google Analytics (GA4)</strong> gtag snippet&apos;inizi veya{' '}
+                        <strong>Google Etiket Yöneticisi (GTM)</strong> üst kutusunu &lt;head&gt; alanına; GTM
+                        noscript bloğunu &lt;body&gt; alanına yapıştırın. Kayıt ile tüm sayfalara uygulanır.
+                      </p>
+
                       <label className="adminFormWide">
-                        &lt;head&gt; içi kod
+                        Google Analytics / gtag / GTM — &lt;head&gt; içi kod
                         <textarea
                           className="adminMonospaceField"
-                          rows={12}
+                          rows={10}
                           spellCheck={false}
                           value={contactSettingsForm.headHtml}
                           onChange={(event) => updateContactSettingsForm('headHtml', event.target.value)}
-                          placeholder={'<!-- Google etiket asistanından aldığınız gtag/snippet buraya -->\n<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXX"></script>\n<script>...</script>'}
+                          placeholder={
+                            '<!-- GA4 Misal: -->\n<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXX"></script>\n<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag(\'js\', new Date());gtag(\'config\', \'G-XXXX\');</script>\n\n<!-- veya GTM <head> snippet\'i -->'
+                          }
                         />
                         <small>
-                          Ölçüm kimliği veya tüm snippet; kaydedildiğinde tüm sayfalarda gerçek{' '}
-                          <code>&lt;head&gt;</code> içine eklenir. Yalnızca güvendiğiniz kodu yapıştırın.
+                          Ölçüm kimliği, gtag.js veya GTM&apos;in ilk script bloğu buraya. Kaydedilince gerçek{' '}
+                          <code>&lt;head&gt;</code> içine eklenir.
+                        </small>
+                      </label>
+
+                      <label className="adminFormWide">
+                        Google Etiket Yöneticisi — &lt;body&gt; hemen açılış (noscript / iframe)
+                        <textarea
+                          className="adminMonospaceField"
+                          rows={8}
+                          spellCheck={false}
+                          value={contactSettingsForm.bodyHtml}
+                          onChange={(event) => updateContactSettingsForm('bodyHtml', event.target.value)}
+                          placeholder={
+                            '<!-- GTM noscript (isteğe bağlı; GA4 için tek başına gtag yeterliyse boş bırakın) -->\n<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-XXXX"\n height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>'
+                          }
+                        />
+                        <small>
+                          GTM kurulumundaki <code>&lt;noscript&gt;</code> satırı. <code>&lt;body&gt;</code> açılışından
+                          hemen sonra, <code>#root</code> önüne eklenir.
                         </small>
                       </label>
 
@@ -6685,6 +7084,24 @@ function App() {
                     </label>
 
                     <label className="adminFormWide">
+                      Ana sayfa kategorisi → çözüm sayfası
+                      <select
+                        value={categoryForm.pageSlug}
+                        onChange={(event) => updateCategoryForm('pageSlug', event.target.value)}
+                      >
+                        <option value="">Yok (galeride yalnızca büyük görsel)</option>
+                        {sitePages.map((page) => (
+                          <option key={page.key} value={page.slug}>
+                            {page.title} ({page.slug}){page.isActive ? '' : ' — pasif'}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="adminFormHint adminFormWide">
+                        Dolu ise galeride tıklanınca <code>/cozum/slug</code> sayfasına gidilir. Slug’u önce Sayfalar bölümünde oluşturun.
+                      </span>
+                    </label>
+
+                    <label className="adminFormWide">
                       Kategori Görseli
                       <AdminImageUploadControl
                         value={categoryForm.image}
@@ -6917,6 +7334,141 @@ function App() {
                       <X size={18} strokeWidth={2.4} />
                     </button>
                     <button className="adminSaveButton" type="button" aria-label={editingSiteServiceKey ? 'Güncelle' : 'Kaydet'} onClick={submitSiteServiceForm}>
+                      <Check size={18} strokeWidth={2.4} />
+                    </button>
+                  </div>
+                </form>
+              </motion.section>
+            </motion.div>
+          )}
+
+          {isSitePageModalOpen && (
+            <motion.div
+              className="adminModalOverlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeSitePageModal}
+            >
+              <motion.section
+                className="adminProductModal adminReferenceModal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="site-page-modal-title"
+                initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                onClick={(modalEvent) => modalEvent.stopPropagation()}
+              >
+                <div className="adminModalHeader">
+                  <div>
+                    <p>Çözüm sayfası</p>
+                    <h2 id="site-page-modal-title">{editingSitePageKey ? 'Sayfayı düzenle' : 'Yeni sayfa'}</h2>
+                  </div>
+                  <button type="button" aria-label="Modalı kapat" onClick={closeSitePageModal}>
+                    <X size={20} strokeWidth={2.2} />
+                  </button>
+                </div>
+
+                <form ref={sitePageFormRef} className="adminProductForm adminReferenceForm" onSubmit={saveSitePage}>
+                  <label>
+                    Kayıt anahtarı
+                    <input
+                      required
+                      disabled={Boolean(editingSitePageKey)}
+                      value={sitePageForm.key}
+                      onChange={(event) => updateSitePageForm('key', event.target.value)}
+                      placeholder="sayfa_uuid"
+                    />
+                  </label>
+                  <label>
+                    URL slug
+                    <input
+                      required
+                      value={sitePageForm.slug}
+                      onChange={(event) => updateSitePageForm('slug', event.target.value)}
+                      placeholder="otomatik-kapi-cozumleri"
+                    />
+                  </label>
+                  <label>
+                    Sıra
+                    <input
+                      min="0"
+                      step="1"
+                      type="number"
+                      value={sitePageForm.sortOrder}
+                      onChange={(event) => updateSitePageForm('sortOrder', event.target.value)}
+                      placeholder="0"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    Sayfa başlığı
+                    <input
+                      required
+                      value={sitePageForm.title}
+                      onChange={(event) => updateSitePageTitle(event.target.value)}
+                      placeholder="Çözüm alanı başlığı"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    İçerik (HTML)
+                    <textarea
+                      rows={12}
+                      value={sitePageForm.htmlContent}
+                      onChange={(event) => updateSitePageForm('htmlContent', event.target.value)}
+                      placeholder="<p>Metin...</p>"
+                    />
+                  </label>
+                  <label>
+                    SEO başlık
+                    <input
+                      value={sitePageForm.metaTitle}
+                      onChange={(event) => updateSitePageForm('metaTitle', event.target.value)}
+                      placeholder="Arama motoru başlığı"
+                    />
+                  </label>
+                  <label>
+                    Anahtar kelimeler
+                    <input
+                      value={sitePageForm.metaKeywords}
+                      onChange={(event) => updateSitePageForm('metaKeywords', event.target.value)}
+                      placeholder="kelime, kelime grubu"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    SEO açıklama
+                    <textarea
+                      value={sitePageForm.metaDescription}
+                      onChange={(event) => updateSitePageForm('metaDescription', event.target.value)}
+                      placeholder="Arama sonucu açıklaması"
+                    />
+                  </label>
+
+                  <div className="adminFormActions">
+                    <label className="adminStatusSwitch">
+                      <input
+                        checked={sitePageForm.isActive}
+                        type="checkbox"
+                        onChange={(event) => updateSitePageForm('isActive', event.target.checked)}
+                      />
+                      <span />
+                      <strong>{sitePageForm.isActive ? 'Yayında' : 'Pasif'}</strong>
+                    </label>
+                    {editingSitePageKey && (
+                      <button
+                        className={`dangerButton${isConfirmingSitePageDelete ? ' confirmDelete' : ''}`}
+                        type="button"
+                        aria-label={isConfirmingSitePageDelete ? 'Silme işlemini onayla' : 'Sil'}
+                        onClick={deleteSitePage}
+                      >
+                        <Trash2 size={18} strokeWidth={2.4} />
+                      </button>
+                    )}
+                    <button type="button" aria-label="Vazgeç" onClick={closeSitePageModal}>
+                      <X size={18} strokeWidth={2.4} />
+                    </button>
+                    <button className="adminSaveButton" type="button" aria-label={editingSitePageKey ? 'Güncelle' : 'Kaydet'} onClick={submitSitePageForm}>
                       <Check size={18} strokeWidth={2.4} />
                     </button>
                   </div>
@@ -7411,7 +7963,7 @@ function App() {
     );
   }
 
-  if (blogSlug) {
+  if (solutionPageSlug || blogSlug) {
     return (
       <main className="page blogDetailPage">
         <header className="siteHeader">
@@ -7525,23 +8077,50 @@ function App() {
         </header>
 
         <article className="blogDetail">
-          <a className="blogBackLink" href="/blog">Tüm blog yazıları</a>
-          {selectedBlogPost ? (
+          {solutionPageSlug ? (
             <>
-              {selectedBlogPost.image && <img src={selectedBlogPost.image} alt={selectedBlogPost.imageAlt || selectedBlogPost.title} />}
-              <p className="eyebrow">{selectedBlogPost.categories[0]?.title ?? 'Blog'}</p>
-              <h1>{selectedBlogPost.title}</h1>
-              <p className="blogDetailSummary">{selectedBlogPost.summary}</p>
-              <div className="blogDetailMeta">
-                {selectedBlogPost.publishedAt && <span>{selectedBlogPost.publishedAt}</span>}
-              </div>
-              <div className="blogDetailContent" dangerouslySetInnerHTML={{ __html: selectedBlogPost.content }} />
+              <a className="blogBackLink" href="/">
+                Ana sayfaya dön
+              </a>
+              {selectedSitePage ? (
+                <>
+                  <p className="eyebrow">Çözüm</p>
+                  <h1>{selectedSitePage.title}</h1>
+                  <div className="blogDetailContent" dangerouslySetInnerHTML={{ __html: selectedSitePage.htmlContent }} />
+                </>
+              ) : (
+                <>
+                  <p className="eyebrow">Çözüm</p>
+                  <h1>Sayfa bulunamadı</h1>
+                  <p>Aradığınız içerik yayında olmayabilir veya kaldırılmış olabilir.</p>
+                </>
+              )}
             </>
           ) : (
             <>
-              <p className="eyebrow">Blog</p>
-              <h1>Yazı bulunamadı</h1>
-              <p>Aradığınız blog yazısı yayında olmayabilir veya kaldırılmış olabilir.</p>
+              <a className="blogBackLink" href="/blog">
+                Tüm blog yazıları
+              </a>
+              {selectedBlogPost ? (
+                <>
+                  {selectedBlogPost.image && (
+                    <img src={selectedBlogPost.image} alt={selectedBlogPost.imageAlt || selectedBlogPost.title} />
+                  )}
+                  <p className="eyebrow">{selectedBlogPost.categories[0]?.title ?? 'Blog'}</p>
+                  <h1>{selectedBlogPost.title}</h1>
+                  <p className="blogDetailSummary">{selectedBlogPost.summary}</p>
+                  <div className="blogDetailMeta">
+                    {selectedBlogPost.publishedAt && <span>{selectedBlogPost.publishedAt}</span>}
+                  </div>
+                  <div className="blogDetailContent" dangerouslySetInnerHTML={{ __html: selectedBlogPost.content }} />
+                </>
+              ) : (
+                <>
+                  <p className="eyebrow">Blog</p>
+                  <h1>Yazı bulunamadı</h1>
+                  <p>Aradığınız blog yazısı yayında olmayabilir veya kaldırılmış olabilir.</p>
+                </>
+              )}
             </>
           )}
         </article>
@@ -8774,18 +9353,7 @@ function App() {
         </AnimatePresence>
       </LayoutGroup>
 
-      <div className="paperShaderBackground" aria-hidden="true">
-        <Canvas
-          camera={{ position: [0, 0, 5], fov: 48 }}
-          dpr={[1, 2]}
-          gl={{ alpha: true, antialias: true }}
-        >
-          <ShaderPlane position={[-1.7, 0.9, 0]} color1="#f0801a" color2="#d8d8d8" />
-          <ShaderPlane position={[1.7, -0.8, -0.3]} color1="#253669" color2="#f0801a" />
-          <EnergyRing radius={1.35} position={[1.25, 0.8, 0.1]} />
-          <EnergyRing radius={0.85} position={[-1.4, -0.9, 0.2]} />
-        </Canvas>
-      </div>
+      <PaperShaderBackground />
 
       <section className="hero">
         <div className="heroText">

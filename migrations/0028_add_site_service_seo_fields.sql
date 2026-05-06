@@ -1,3 +1,3 @@
-ALTER TABLE site_services ADD COLUMN meta_title TEXT NOT NULL DEFAULT '';
-ALTER TABLE site_services ADD COLUMN meta_keywords TEXT NOT NULL DEFAULT '';
-ALTER TABLE site_services ADD COLUMN meta_description TEXT NOT NULL DEFAULT '';
+-- Sütunlar production'da ensureSiteServicesTable (src/index.ts) ile zaten eklenmiş olabilir.
+-- Yinelenen ALTER duplicate column hatası verir; migrasyon kaydı için no-op.
+SELECT 1;

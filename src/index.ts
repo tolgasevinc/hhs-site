@@ -47,6 +47,19 @@ type CategoryInput = {
   imageHorizontal?: string;
   imageVertical?: string;
   sortOrder?: number;
+  pageSlug?: string;
+};
+
+type SitePageInput = {
+  key?: string;
+  slug: string;
+  title: string;
+  htmlContent?: string;
+  metaTitle?: string;
+  metaKeywords?: string;
+  metaDescription?: string;
+  isActive?: boolean;
+  sortOrder?: number;
 };
 
 type SocialLinkInput = {
@@ -91,6 +104,7 @@ type ContactSettingsInput = {
   appleMapUrl: string;
   footerDescription: string;
   headHtml: string;
+  bodyHtml: string;
 };
 
 type SiteReferenceInput = {
@@ -199,7 +213,6 @@ type ServiceRequestRow = {
 
 type QuoteRequestRecord = QuoteRequestInput & {
   id: string;
-  whatsappUrl: string;
   pushoverSent?: boolean;
 };
 
@@ -265,6 +278,21 @@ type CategoryRow = {
   image_horizontal_url: string;
   image_vertical_url: string;
   sort_order: number;
+  page_slug: string | null;
+};
+
+type SitePageRow = {
+  key: string;
+  slug: string;
+  title: string;
+  html_content: string;
+  meta_title: string;
+  meta_keywords: string;
+  meta_description: string;
+  is_active: number;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
 };
 
 type AssetReferenceRow = {
@@ -317,6 +345,7 @@ type ContactSettingsRow = {
   apple_map_url: string;
   footer_description: string;
   head_html: string | null;
+  body_html: string | null;
 };
 
 type SiteReferenceRow = {
@@ -568,6 +597,14 @@ const getBlogPostRequestBody = async (request: Request) => {
   }
 };
 
+const getSitePageRequestBody = async (request: Request) => {
+  try {
+    return (await request.json()) as SitePageInput;
+  } catch {
+    return null;
+  }
+};
+
 const getBlogCategoryRequestBody = async (request: Request) => {
   try {
     return (await request.json()) as BlogCategoryInput;
@@ -617,14 +654,15 @@ const isValidQuoteQuestionListInput = (body: QuoteQuestionListInput | null): bod
   );
 };
 
-const CONTACT_SETTINGS_HEAD_HTML_MAX_LENGTH = 120_000;
+const CONTACT_SETTINGS_INJECT_HTML_MAX_LENGTH = 120_000;
 
 const isValidContactSettingsInput = (body: ContactSettingsInput | null): body is ContactSettingsInput => {
   return Boolean(
     body &&
       typeof body.phonePrimary === 'string' &&
       typeof body.email === 'string' &&
-      typeof body.headHtml === 'string',
+      typeof body.headHtml === 'string' &&
+      typeof body.bodyHtml === 'string',
   );
 };
 
@@ -696,6 +734,20 @@ const isValidBlogPostInput = (body: BlogPostInput | null): body is BlogPostInput
       body.metaKeywords &&
       body.metaDescription,
   );
+};
+
+const SITE_PAGE_HTML_MAX_LENGTH = 500_000;
+
+const isValidSitePageInput = (body: SitePageInput | null): body is SitePageInput => {
+  if (!body?.key?.trim() || !body.slug?.trim() || !body.title?.trim()) {
+    return false;
+  }
+
+  if (body.htmlContent != null && body.htmlContent.length > SITE_PAGE_HTML_MAX_LENGTH) {
+    return false;
+  }
+
+  return true;
 };
 
 const isValidBlogCategoryInput = (body: BlogCategoryInput | null): body is BlogCategoryInput => {
@@ -1300,10 +1352,44 @@ const listProducts = async (db: D1Database) => {
   return mapProducts(products.results, badges.results, children.results);
 };
 
+const ensureSitePagesTable = async (db: D1Database) => {
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS site_pages (
+        key TEXT PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        html_content TEXT NOT NULL DEFAULT '',
+        meta_title TEXT NOT NULL DEFAULT '',
+        meta_keywords TEXT NOT NULL DEFAULT '',
+        meta_description TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+    )
+    .run();
+
+  await db.prepare('CREATE INDEX IF NOT EXISTS idx_site_pages_slug ON site_pages(slug)').run();
+  await db.prepare('CREATE INDEX IF NOT EXISTS idx_site_pages_active_sort ON site_pages(is_active, sort_order)').run();
+};
+
+const ensureProductCategoriesPageSlugColumn = async (db: D1Database) => {
+  const columns = await db.prepare('PRAGMA table_info(product_categories)').all<{ name: string }>();
+  const hasPageSlug = columns.results.some((column) => column.name === 'page_slug');
+
+  if (!hasPageSlug) {
+    await db.prepare("ALTER TABLE product_categories ADD COLUMN page_slug TEXT NOT NULL DEFAULT ''").run();
+  }
+};
+
 const listCategories = async (db: D1Database) => {
+  await ensureProductCategoriesPageSlugColumn(db);
+
   const categories = await db
     .prepare(
-      `SELECT key, title, slug, description, meta_title, meta_keywords, meta_description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order
+      `SELECT key, title, slug, description, meta_title, meta_keywords, meta_description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order, page_slug
       FROM product_categories
       ORDER BY sort_order ASC, created_at ASC`,
     )
@@ -1322,6 +1408,7 @@ const listCategories = async (db: D1Database) => {
     imageHorizontal: category.image_horizontal_url || category.image_url,
     imageVertical: category.image_vertical_url || category.image_url,
     sortOrder: category.sort_order,
+    pageSlug: category.page_slug?.trim() ?? '',
   }));
 };
 
@@ -1517,6 +1604,7 @@ const defaultContactSettings: ContactSettingsInput = {
   appleMapUrl: '',
   footerDescription: 'Otomatik kapı, bariyer ve geçiş kontrol sistemlerinde keşif, satış, montaj ve teknik destek.',
   headHtml: '',
+  bodyHtml: '',
 };
 
 const escapeHtml = (value: string) =>
@@ -1538,6 +1626,7 @@ const mapContactSettings = (settings: ContactSettingsRow): ContactSettingsInput 
   appleMapUrl: settings.apple_map_url ?? '',
   footerDescription: settings.footer_description ?? defaultContactSettings.footerDescription,
   headHtml: settings.head_html ?? '',
+  bodyHtml: settings.body_html ?? '',
 });
 
 const ensureContactSettingsTable = async (db: D1Database) => {
@@ -1580,6 +1669,11 @@ const ensureContactSettingsTable = async (db: D1Database) => {
   if (!columnsAfterFooters.results.some((column) => column.name === 'head_html')) {
     await db.prepare("ALTER TABLE contact_settings ADD COLUMN head_html TEXT NOT NULL DEFAULT ''").run();
   }
+
+  const columnsAfterHead = await db.prepare('PRAGMA table_info(contact_settings)').all<{ name: string }>();
+  if (!columnsAfterHead.results.some((column) => column.name === 'body_html')) {
+    await db.prepare("ALTER TABLE contact_settings ADD COLUMN body_html TEXT NOT NULL DEFAULT ''").run();
+  }
 };
 
 const getContactSettings = async (db: D1Database) => {
@@ -1587,7 +1681,7 @@ const getContactSettings = async (db: D1Database) => {
     await ensureContactSettingsTable(db);
     const settings = await db
       .prepare(
-        `SELECT id, phone_primary, phone_secondary, whatsapp, service, email, address, google_map_url, apple_map_url, footer_description, head_html
+        `SELECT id, phone_primary, phone_secondary, whatsapp, service, email, address, google_map_url, apple_map_url, footer_description, head_html, body_html
         FROM contact_settings
         WHERE id = 'default'
         LIMIT 1`,
@@ -1616,8 +1710,9 @@ const upsertContactSettings = async (db: D1Database, settings: ContactSettingsIn
         google_map_url,
         apple_map_url,
         footer_description,
-        head_html
-      ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        head_html,
+        body_html
+      ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         phone_primary = excluded.phone_primary,
         phone_secondary = excluded.phone_secondary,
@@ -1629,6 +1724,7 @@ const upsertContactSettings = async (db: D1Database, settings: ContactSettingsIn
         apple_map_url = excluded.apple_map_url,
         footer_description = excluded.footer_description,
         head_html = excluded.head_html,
+        body_html = excluded.body_html,
         updated_at = CURRENT_TIMESTAMP`,
     )
     .bind(
@@ -1642,6 +1738,7 @@ const upsertContactSettings = async (db: D1Database, settings: ContactSettingsIn
       settings.appleMapUrl ?? '',
       settings.footerDescription ?? defaultContactSettings.footerDescription,
       settings.headHtml ?? '',
+      settings.bodyHtml ?? '',
     )
     .run();
 
@@ -2348,8 +2445,6 @@ const ensureQuoteRequestsTable = async (db: D1Database) => {
 const createQuoteRequest = async (db: D1Database, env: Env, input: QuoteRequestInput) => {
   await ensureQuoteRequestsTable(db);
 
-  const contactSettings = await getContactSettings(db);
-  const whatsappDigits = contactSettings.whatsapp.replace(/\D/g, '');
   const quoteRequest: QuoteRequestRecord = {
     id: crypto.randomUUID(),
     isAnonymous: input.isAnonymous === true,
@@ -2369,9 +2464,6 @@ const createQuoteRequest = async (db: D1Database, env: Env, input: QuoteRequestI
         : String(answer.answer ?? '').trim(),
     })),
     whatsappMessage: input.whatsappMessage.trim(),
-    whatsappUrl: whatsappDigits
-      ? `https://wa.me/${whatsappDigits}?text=${encodeURIComponent(input.whatsappMessage.trim())}`
-      : '',
   };
 
   await db
@@ -2520,9 +2612,11 @@ const deleteQuoteRequest = async (db: D1Database, id: string) => {
 };
 
 const getCategory = async (db: D1Database, key: string) => {
+  await ensureProductCategoriesPageSlugColumn(db);
+
   const category = await db
     .prepare(
-      `SELECT key, title, slug, description, meta_title, meta_keywords, meta_description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order
+      `SELECT key, title, slug, description, meta_title, meta_keywords, meta_description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order, page_slug
       FROM product_categories
       WHERE key = ?`,
     )
@@ -2546,10 +2640,13 @@ const getCategory = async (db: D1Database, key: string) => {
     imageHorizontal: category.image_horizontal_url || category.image_url,
     imageVertical: category.image_vertical_url || category.image_url,
     sortOrder: category.sort_order,
+    pageSlug: category.page_slug?.trim() ?? '',
   };
 };
 
 const createCategory = async (db: D1Database, category: CategoryInput) => {
+  await ensureProductCategoriesPageSlugColumn(db);
+
   await db
     .prepare(
       `INSERT INTO product_categories (
@@ -2564,9 +2661,10 @@ const createCategory = async (db: D1Database, category: CategoryInput) => {
         image_square_url,
         image_horizontal_url,
         image_vertical_url,
-        sort_order
+        sort_order,
+        page_slug
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       category.key,
@@ -2581,6 +2679,7 @@ const createCategory = async (db: D1Database, category: CategoryInput) => {
       category.imageHorizontal ?? category.image ?? '',
       category.imageVertical ?? category.image ?? '',
       category.sortOrder ?? 0,
+      category.pageSlug?.trim() ?? '',
     )
     .run();
 
@@ -2588,6 +2687,8 @@ const createCategory = async (db: D1Database, category: CategoryInput) => {
 };
 
 const updateCategory = async (db: D1Database, key: string, category: CategoryInput) => {
+  await ensureProductCategoriesPageSlugColumn(db);
+
   await db
     .prepare(
       `UPDATE product_categories
@@ -2603,6 +2704,7 @@ const updateCategory = async (db: D1Database, key: string, category: CategoryInp
         image_horizontal_url = ?,
         image_vertical_url = ?,
         sort_order = ?,
+        page_slug = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE key = ?`,
     )
@@ -2618,11 +2720,228 @@ const updateCategory = async (db: D1Database, key: string, category: CategoryInp
       category.imageHorizontal ?? category.image ?? '',
       category.imageVertical ?? category.image ?? '',
       category.sortOrder ?? 0,
+      category.pageSlug?.trim() ?? '',
       key,
     )
     .run();
 
   return getCategory(db, key);
+};
+
+const mapSitePageRow = (row: SitePageRow) => ({
+  key: row.key,
+  slug: row.slug,
+  title: row.title,
+  htmlContent: row.html_content,
+  metaTitle: row.meta_title,
+  metaKeywords: row.meta_keywords,
+  metaDescription: row.meta_description,
+  isActive: Boolean(row.is_active),
+  sortOrder: row.sort_order,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const listSitePages = async (db: D1Database, fullDetail: boolean) => {
+  await ensureSitePagesTable(db);
+
+  if (fullDetail) {
+    const rows = await db
+      .prepare(
+        `SELECT key, slug, title, html_content, meta_title, meta_keywords, meta_description, is_active, sort_order, created_at, updated_at
+        FROM site_pages
+        ORDER BY sort_order ASC, title ASC`,
+      )
+      .all<SitePageRow>();
+
+    return rows.results.map(mapSitePageRow);
+  }
+
+  const rows = await db
+    .prepare(
+      `SELECT key, slug, title, meta_title, meta_keywords, meta_description, is_active, sort_order, created_at, updated_at
+      FROM site_pages
+      WHERE is_active = 1
+      ORDER BY sort_order ASC, title ASC`,
+    )
+    .all<{
+      key: string;
+      slug: string;
+      title: string;
+      meta_title: string;
+      meta_keywords: string;
+      meta_description: string;
+      is_active: number;
+      sort_order: number;
+      created_at: string;
+      updated_at: string;
+    }>();
+
+  return rows.results.map((row) => ({
+    key: row.key,
+    slug: row.slug,
+    title: row.title,
+    htmlContent: '',
+    metaTitle: row.meta_title,
+    metaKeywords: row.meta_keywords,
+    metaDescription: row.meta_description,
+    isActive: Boolean(row.is_active),
+    sortOrder: row.sort_order,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+};
+
+const getSitePageByKeyOrSlug = async (db: D1Database, value: string, includeInactive = false) => {
+  await ensureSitePagesTable(db);
+
+  const row = await db
+    .prepare(
+      `SELECT key, slug, title, html_content, meta_title, meta_keywords, meta_description, is_active, sort_order, created_at, updated_at
+      FROM site_pages
+      WHERE key = ? OR slug = ?
+      LIMIT 1`,
+    )
+    .bind(value, value)
+    .first<SitePageRow>();
+
+  if (!row) {
+    return null;
+  }
+
+  if (!includeInactive && !row.is_active) {
+    return null;
+  }
+
+  return mapSitePageRow(row);
+};
+
+const createSitePage = async (db: D1Database, input: SitePageInput) => {
+  await ensureSitePagesTable(db);
+
+  const key = input.key?.trim() ?? '';
+  const slug = input.slug.trim();
+
+  if (!key) {
+    return null;
+  }
+
+  const duplicate = await db
+    .prepare('SELECT key FROM site_pages WHERE key = ? OR slug = ? LIMIT 1')
+    .bind(key, slug)
+    .first<{ key: string }>();
+
+  if (duplicate) {
+    return null;
+  }
+
+  await db
+    .prepare(
+      `INSERT INTO site_pages (
+        key,
+        slug,
+        title,
+        html_content,
+        meta_title,
+        meta_keywords,
+        meta_description,
+        is_active,
+        sort_order
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      key,
+      slug,
+      input.title.trim(),
+      input.htmlContent ?? '',
+      input.metaTitle?.trim() ?? '',
+      input.metaKeywords?.trim() ?? '',
+      input.metaDescription?.trim() ?? '',
+      input.isActive === false ? 0 : 1,
+      input.sortOrder ?? 0,
+    )
+    .run();
+
+  return getSitePageByKeyOrSlug(db, key, true);
+};
+
+const updateSitePage = async (db: D1Database, existingKey: string, input: SitePageInput) => {
+  await ensureSitePagesTable(db);
+
+  const current = await db
+    .prepare('SELECT slug, key FROM site_pages WHERE key = ? LIMIT 1')
+    .bind(existingKey)
+    .first<{ slug: string; key: string }>();
+
+  if (!current) {
+    return null;
+  }
+
+  const slug = input.slug.trim();
+
+  if (slug !== current.slug) {
+    const slugTaken = await db
+      .prepare('SELECT key FROM site_pages WHERE slug = ? AND key != ? LIMIT 1')
+      .bind(slug, existingKey)
+      .first<{ key: string }>();
+
+    if (slugTaken) {
+      return null;
+    }
+  }
+
+  await db
+    .prepare(
+      `UPDATE site_pages SET
+        slug = ?,
+        title = ?,
+        html_content = ?,
+        meta_title = ?,
+        meta_keywords = ?,
+        meta_description = ?,
+        is_active = ?,
+        sort_order = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE key = ?`,
+    )
+    .bind(
+      slug,
+      input.title.trim(),
+      input.htmlContent ?? '',
+      input.metaTitle?.trim() ?? '',
+      input.metaKeywords?.trim() ?? '',
+      input.metaDescription?.trim() ?? '',
+      input.isActive === false ? 0 : 1,
+      input.sortOrder ?? 0,
+      existingKey,
+    )
+    .run();
+
+  return getSitePageByKeyOrSlug(db, existingKey, true);
+};
+
+const deleteSitePage = async (db: D1Database, key: string) => {
+  await ensureSitePagesTable(db);
+
+  const result = await db.prepare('DELETE FROM site_pages WHERE key = ?').bind(key).run();
+
+  return result.meta.changes > 0;
+};
+
+const isCategoryPageSlugValid = async (db: D1Database, pageSlug: string | undefined | null) => {
+  const trimmed = typeof pageSlug === 'string' ? pageSlug.trim() : '';
+
+  if (!trimmed) {
+    return true;
+  }
+
+  await ensureSitePagesTable(db);
+
+  const row = await db.prepare('SELECT 1 AS ok FROM site_pages WHERE slug = ? LIMIT 1').bind(trimmed).first<{
+    ok: number;
+  }>();
+
+  return Boolean(row);
 };
 
 const getProduct = async (db: D1Database, key: string) => {
@@ -3506,8 +3825,14 @@ export default {
           return json({ ok: false, error: 'Invalid contact settings payload' }, { status: 400 });
         }
 
-        if (body.headHtml.length > CONTACT_SETTINGS_HEAD_HTML_MAX_LENGTH) {
-          return json({ ok: false, error: 'Head kodu en fazla 120.000 karakter olabilir.' }, { status: 400 });
+        if (
+          body.headHtml.length > CONTACT_SETTINGS_INJECT_HTML_MAX_LENGTH ||
+          body.bodyHtml.length > CONTACT_SETTINGS_INJECT_HTML_MAX_LENGTH
+        ) {
+          return json(
+            { ok: false, error: 'Head veya gövde kodu en fazla 120.000 karakter olabilir.' },
+            { status: 400 },
+          );
         }
 
         return json({
@@ -3899,7 +4224,6 @@ export default {
         {
           ok: true,
           request: quoteRequest,
-          whatsappUrl: quoteRequest.whatsappUrl,
           pushoverSent: quoteRequest.pushoverSent === true,
         },
         { status: 201 },
@@ -4102,6 +4426,111 @@ export default {
       }
     }
 
+    if (url.pathname === '/api/site-pages') {
+      if (request.method === 'GET') {
+        const admin = await authenticateAdmin(request, env.DB);
+        const fullDetail = Boolean(admin && hasAdminModule(admin, 'settings'));
+
+        return json({
+          ok: true,
+          pages: await listSitePages(env.DB, fullDetail),
+        });
+      }
+
+      if (request.method === 'POST') {
+        const admin = await authenticateAdmin(request, env.DB);
+
+        if (!admin) {
+          return unauthorized();
+        }
+
+        if (!hasAdminModule(admin, 'settings')) {
+          return forbidden();
+        }
+
+        const body = await getSitePageRequestBody(request);
+
+        if (!isValidSitePageInput(body)) {
+          return json({ ok: false, error: 'Invalid site page payload' }, { status: 400 });
+        }
+
+        const page = await createSitePage(env.DB, body);
+
+        if (!page) {
+          return json({ ok: false, error: 'duplicate_key_or_slug' }, { status: 409 });
+        }
+
+        return json({ ok: true, page }, { status: 201 });
+      }
+    }
+
+    const sitePageMatch = url.pathname.match(/^\/api\/site-pages\/([^/]+)$/);
+
+    if (sitePageMatch) {
+      const sitePageKeyOrSlug = decodeURIComponent(sitePageMatch[1]);
+
+      if (request.method === 'GET') {
+        const admin = await authenticateAdmin(request, env.DB);
+        const includeInactive = Boolean(admin && hasAdminModule(admin, 'settings'));
+        const page = await getSitePageByKeyOrSlug(env.DB, sitePageKeyOrSlug, includeInactive);
+
+        return page ? json({ ok: true, page }) : notFound();
+      }
+
+      if (request.method === 'PUT') {
+        const admin = await authenticateAdmin(request, env.DB);
+
+        if (!admin) {
+          return unauthorized();
+        }
+
+        if (!hasAdminModule(admin, 'settings')) {
+          return forbidden();
+        }
+
+        const body = await getSitePageRequestBody(request);
+
+        if (!isValidSitePageInput(body)) {
+          return json({ ok: false, error: 'Invalid site page payload' }, { status: 400 });
+        }
+
+        const existing = await getSitePageByKeyOrSlug(env.DB, sitePageKeyOrSlug, true);
+
+        if (!existing) {
+          return notFound();
+        }
+
+        const page = await updateSitePage(env.DB, existing.key, body);
+
+        if (!page) {
+          return json({ ok: false, error: 'slug_in_use' }, { status: 409 });
+        }
+
+        return json({ ok: true, page });
+      }
+
+      if (request.method === 'DELETE') {
+        const admin = await authenticateAdmin(request, env.DB);
+
+        if (!admin) {
+          return unauthorized();
+        }
+
+        if (!hasAdminModule(admin, 'settings')) {
+          return forbidden();
+        }
+
+        const existing = await getSitePageByKeyOrSlug(env.DB, sitePageKeyOrSlug, true);
+        const deleteKey = existing?.key ?? sitePageKeyOrSlug;
+        const deleted = await deleteSitePage(env.DB, deleteKey);
+
+        return json({
+          ok: deleted,
+          deleted: deleted ? 1 : 0,
+        });
+      }
+    }
+
     if (url.pathname === '/api/product-categories' && request.method === 'POST') {
       const admin = await authenticateAdmin(request, env.DB);
 
@@ -4117,6 +4546,10 @@ export default {
 
       if (!isValidCategoryInput(body)) {
         return json({ ok: false, error: 'Invalid category payload' }, { status: 400 });
+      }
+
+      if (!(await isCategoryPageSlugValid(env.DB, body.pageSlug))) {
+        return json({ ok: false, error: 'invalid_page_slug' }, { status: 400 });
       }
 
       return json(
@@ -4153,6 +4586,10 @@ export default {
 
         if (!isValidCategoryInput(body)) {
           return json({ ok: false, error: 'Invalid category payload' }, { status: 400 });
+        }
+
+        if (!(await isCategoryPageSlugValid(env.DB, body.pageSlug))) {
+          return json({ ok: false, error: 'invalid_page_slug' }, { status: 400 });
         }
 
         const category = await updateCategory(env.DB, categoryKey, body);
