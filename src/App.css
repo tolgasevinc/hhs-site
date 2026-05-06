@@ -603,7 +603,6 @@ input[type='radio'] {
 
 .adminProductCard {
   overflow: hidden;
-  cursor: pointer;
   font: inherit;
   text-align: left;
   transition:
@@ -613,7 +612,7 @@ input[type='radio'] {
 }
 
 .adminProductCard:hover,
-.adminProductCard:focus-visible {
+.adminProductCard:focus-within {
   border-color: rgba(240, 128, 26, 0.34);
   box-shadow: 0 16px 36px rgba(10, 14, 28, 0.1);
   transform: translateY(-2px);
@@ -628,8 +627,41 @@ input[type='radio'] {
   background: var(--color-light-gray);
 }
 
+.adminProductCard > svg {
+  display: block;
+  width: 100%;
+  height: 130px;
+  padding: 42px;
+  color: var(--color-navy);
+  background: var(--color-light-gray);
+}
+
 .adminProductCard div {
   padding: 14px;
+}
+
+.adminProductCardActions {
+  display: flex;
+  gap: 8px;
+  padding: 0 !important;
+}
+
+.adminProductCardActions button {
+  flex: 1;
+  min-height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-navy);
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.adminProductCardActions button:last-child {
+  background: rgba(240, 128, 26, 0.12);
+  color: var(--color-orange);
 }
 
 .adminProductCard span {
@@ -656,8 +688,8 @@ input[type='radio'] {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
-  line-clamp: 3;
   -webkit-line-clamp: 3;
+  line-clamp: 3;
 }
 
 .adminBlogCard.draft {
@@ -1590,7 +1622,12 @@ input[type='radio'] {
   font-weight: 900;
 }
 
-.adminQuoteQuestionListCard > button {
+.adminQuoteQuestionActions {
+  display: flex;
+  gap: 8px;
+}
+
+.adminQuoteQuestionActions button {
   min-height: 36px;
   padding: 0 14px;
   border: 1px solid rgba(37, 54, 105, 0.16);
@@ -1601,6 +1638,12 @@ input[type='radio'] {
   font: inherit;
   font-size: 13px;
   font-weight: 900;
+}
+
+.adminQuoteQuestionActions button:last-child {
+  border-color: rgba(240, 128, 26, 0.24);
+  background: rgba(240, 128, 26, 0.1);
+  color: var(--color-orange);
 }
 
 .adminQuoteQuestionEmpty {
@@ -1697,6 +1740,16 @@ input[type='radio'] {
   cursor: pointer;
   font-size: 12px;
   font-weight: 900;
+}
+
+.adminQuoteRequestStatusGroup button.dangerButton {
+  background: #fff1f0;
+  color: #b42318;
+}
+
+.adminQuoteRequestStatusGroup button.dangerButton.confirmDelete {
+  background: #b42318;
+  color: #ffffff;
 }
 
 .adminQuoteRequestStatusGroup button:disabled {
@@ -1807,6 +1860,12 @@ input[type='radio'] {
 .adminProductForm textarea {
   min-height: 90px;
   resize: vertical;
+}
+
+.adminProductForm textarea.adminMonospaceField {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
 }
 
 .adminProductForm .adminModulePicker label {
@@ -2559,7 +2618,6 @@ input[type='radio'] {
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
   scroll-padding-bottom: 84px;
   display: flex;
   flex-direction: column;
@@ -2724,6 +2782,10 @@ input[type='radio'] {
   object-fit: cover;
 }
 
+.quoteCategoryThumb svg {
+  flex: 0 0 auto;
+}
+
 .quoteCategoryCard strong,
 .quoteCategoryCard small {
   display: block;
@@ -2813,6 +2875,13 @@ input[type='radio'] {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.productImageWrap svg {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  color: var(--color-navy);
+  transform: translate(-50%, -50%);
 }
 
 .productBadges {
@@ -4055,6 +4124,35 @@ article p {
   transform-origin: center center;
 }
 
+.latestBlogStackImage--single,
+.latestBlogStackImage--active {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0) scale(1);
+  z-index: 3;
+}
+
+.latestBlogStackImage--previous {
+  opacity: 0.92;
+  pointer-events: auto;
+  transform: translateX(calc(-50% - clamp(54px, 13vw, 104px))) translateY(-56px) scale(0.78) rotateY(16deg);
+  z-index: 2;
+}
+
+.latestBlogStackImage--next {
+  opacity: 0.92;
+  pointer-events: auto;
+  transform: translateX(calc(-50% + clamp(54px, 13vw, 104px))) translateY(-56px) scale(0.78) rotateY(-16deg);
+  z-index: 2;
+}
+
+.latestBlogStackImage--hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(24px) scale(0.66);
+  z-index: 1;
+}
+
 .latestBlogStackFallback {
   background:
     radial-gradient(circle at 30% 20%, rgba(240, 128, 26, 0.32), transparent 32%),
@@ -4097,9 +4195,9 @@ article p {
   color: var(--color-navy);
   font-size: clamp(24px, 3.2vw, 36px);
   line-height: 1.05;
-  line-clamp: 2;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .latestBlogCarouselContent p {
@@ -4110,9 +4208,9 @@ article p {
   font-size: 17px;
   font-weight: 800;
   line-height: 1.75;
-  line-clamp: 4;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
+  line-clamp: 4;
 }
 
 .latestBlogCarouselActions {
@@ -4188,9 +4286,9 @@ article p {
   overflow: hidden;
   font-size: 13px;
   line-height: 1.35;
-  line-clamp: 2;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .latestBlogGrid {
@@ -4236,8 +4334,8 @@ article p {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
-  line-clamp: 3;
   -webkit-line-clamp: 3;
+  line-clamp: 3;
 }
 
 .blogIndexPage {

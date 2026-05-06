@@ -90,6 +90,7 @@ type ContactSettingsInput = {
   googleMapUrl: string;
   appleMapUrl: string;
   footerDescription: string;
+  headHtml: string;
 };
 
 type SiteReferenceInput = {
@@ -315,6 +316,7 @@ type ContactSettingsRow = {
   google_map_url: string;
   apple_map_url: string;
   footer_description: string;
+  head_html: string | null;
 };
 
 type SiteReferenceRow = {
@@ -615,8 +617,15 @@ const isValidQuoteQuestionListInput = (body: QuoteQuestionListInput | null): bod
   );
 };
 
+const CONTACT_SETTINGS_HEAD_HTML_MAX_LENGTH = 120_000;
+
 const isValidContactSettingsInput = (body: ContactSettingsInput | null): body is ContactSettingsInput => {
-  return Boolean(body && typeof body.phonePrimary === 'string' && typeof body.email === 'string');
+  return Boolean(
+    body &&
+      typeof body.phonePrimary === 'string' &&
+      typeof body.email === 'string' &&
+      typeof body.headHtml === 'string',
+  );
 };
 
 const isValidSiteReferenceInput = (body: SiteReferenceInput | null): body is SiteReferenceInput => {
@@ -628,6 +637,8 @@ const isValidSiteServiceInput = (body: SiteServiceInput | null): body is SiteSer
 };
 
 const isValidServiceRequestInput = (body: ServiceRequestInput | null): body is ServiceRequestInput => {
+  const phoneDigits = body?.phone?.replace(/\D/g, '') ?? '';
+
   return Boolean(
     body &&
       typeof body.requestType === 'string' &&
@@ -637,12 +648,18 @@ const isValidServiceRequestInput = (body: ServiceRequestInput | null): body is S
       typeof body.lastName === 'string' &&
       body.lastName.trim() &&
       typeof body.phone === 'string' &&
-      body.phone.trim(),
+      phoneDigits.length >= 10,
   );
 };
 
 const isValidQuoteRequestInput = (body: QuoteRequestInput | null): body is QuoteRequestInput => {
   if (!body?.categoryKey?.trim() || !body.productKey?.trim() || !body.whatsappMessage?.trim()) {
+    return false;
+  }
+
+  const phoneDigits = body.phone?.replace(/\D/g, '') ?? '';
+
+  if (phoneDigits.length < 10) {
     return false;
   }
 
@@ -652,7 +669,6 @@ const isValidQuoteRequestInput = (body: QuoteRequestInput | null): body is Quote
 
   return Boolean(
     body.fullName?.trim() &&
-      body.phone?.trim() &&
       body.email?.trim() &&
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim()),
   );
@@ -1500,6 +1516,7 @@ const defaultContactSettings: ContactSettingsInput = {
   googleMapUrl: '',
   appleMapUrl: '',
   footerDescription: 'Otomatik kapı, bariyer ve geçiş kontrol sistemlerinde keşif, satış, montaj ve teknik destek.',
+  headHtml: '',
 };
 
 const escapeHtml = (value: string) =>
@@ -1520,6 +1537,7 @@ const mapContactSettings = (settings: ContactSettingsRow): ContactSettingsInput 
   googleMapUrl: settings.google_map_url,
   appleMapUrl: settings.apple_map_url ?? '',
   footerDescription: settings.footer_description ?? defaultContactSettings.footerDescription,
+  headHtml: settings.head_html ?? '',
 });
 
 const ensureContactSettingsTable = async (db: D1Database) => {
@@ -1557,6 +1575,11 @@ const ensureContactSettingsTable = async (db: D1Database) => {
       )
       .run();
   }
+
+  const columnsAfterFooters = await db.prepare('PRAGMA table_info(contact_settings)').all<{ name: string }>();
+  if (!columnsAfterFooters.results.some((column) => column.name === 'head_html')) {
+    await db.prepare("ALTER TABLE contact_settings ADD COLUMN head_html TEXT NOT NULL DEFAULT ''").run();
+  }
 };
 
 const getContactSettings = async (db: D1Database) => {
@@ -1564,7 +1587,7 @@ const getContactSettings = async (db: D1Database) => {
     await ensureContactSettingsTable(db);
     const settings = await db
       .prepare(
-        `SELECT id, phone_primary, phone_secondary, whatsapp, service, email, address, google_map_url, apple_map_url, footer_description
+        `SELECT id, phone_primary, phone_secondary, whatsapp, service, email, address, google_map_url, apple_map_url, footer_description, head_html
         FROM contact_settings
         WHERE id = 'default'
         LIMIT 1`,
@@ -1592,8 +1615,9 @@ const upsertContactSettings = async (db: D1Database, settings: ContactSettingsIn
         address,
         google_map_url,
         apple_map_url,
-        footer_description
-      ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        footer_description,
+        head_html
+      ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         phone_primary = excluded.phone_primary,
         phone_secondary = excluded.phone_secondary,
@@ -1604,6 +1628,7 @@ const upsertContactSettings = async (db: D1Database, settings: ContactSettingsIn
         google_map_url = excluded.google_map_url,
         apple_map_url = excluded.apple_map_url,
         footer_description = excluded.footer_description,
+        head_html = excluded.head_html,
         updated_at = CURRENT_TIMESTAMP`,
     )
     .bind(
@@ -1616,6 +1641,7 @@ const upsertContactSettings = async (db: D1Database, settings: ContactSettingsIn
       settings.googleMapUrl,
       settings.appleMapUrl ?? '',
       settings.footerDescription ?? defaultContactSettings.footerDescription,
+      settings.headHtml ?? '',
     )
     .run();
 
@@ -2284,6 +2310,14 @@ const closeServiceRequest = async (db: D1Database, id: string) => {
   return listServiceRequests(db);
 };
 
+const deleteServiceRequest = async (db: D1Database, id: string) => {
+  await ensureServiceRequestsTable(db);
+
+  await db.prepare('DELETE FROM service_requests WHERE id = ?').bind(id).run();
+
+  return listServiceRequests(db);
+};
+
 const ensureQuoteRequestsTable = async (db: D1Database) => {
   await db
     .prepare(
@@ -2325,7 +2359,7 @@ const createQuoteRequest = async (db: D1Database, env: Env, input: QuoteRequestI
     productKey: input.productKey.trim(),
     productTitle: input.productTitle?.trim() ?? '',
     fullName: input.isAnonymous ? '' : (input.fullName?.trim() ?? ''),
-    phone: input.isAnonymous ? '' : (input.phone?.trim() ?? ''),
+    phone: input.phone?.trim() ?? '',
     email: input.isAnonymous ? '' : (input.email?.trim() ?? ''),
     answers: (input.answers ?? []).map((answer) => ({
       questionId: answer.questionId?.trim() ?? '',
@@ -2473,6 +2507,14 @@ const closeQuoteRequest = async (db: D1Database, id: string) => {
     .prepare("UPDATE quote_requests SET status = 'closed', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
     .bind(id)
     .run();
+
+  return listQuoteRequests(db);
+};
+
+const deleteQuoteRequest = async (db: D1Database, id: string) => {
+  await ensureQuoteRequestsTable(db);
+
+  await db.prepare('DELETE FROM quote_requests WHERE id = ?').bind(id).run();
 
   return listQuoteRequests(db);
 };
@@ -3464,6 +3506,10 @@ export default {
           return json({ ok: false, error: 'Invalid contact settings payload' }, { status: 400 });
         }
 
+        if (body.headHtml.length > CONTACT_SETTINGS_HEAD_HTML_MAX_LENGTH) {
+          return json({ ok: false, error: 'Head kodu en fazla 120.000 karakter olabilir.' }, { status: 400 });
+        }
+
         return json({
           ok: true,
           settings: await upsertContactSettings(env.DB, body),
@@ -3734,6 +3780,13 @@ export default {
         });
       }
 
+      if (request.method === 'DELETE') {
+        return json({
+          ok: true,
+          requests: await deleteServiceRequest(env.DB, requestId),
+        });
+      }
+
       return notFound();
     }
 
@@ -3870,6 +3923,13 @@ export default {
         return json({
           ok: true,
           requests: await closeQuoteRequest(env.DB, requestId),
+        });
+      }
+
+      if (request.method === 'DELETE') {
+        return json({
+          ok: true,
+          requests: await deleteQuoteRequest(env.DB, requestId),
         });
       }
 

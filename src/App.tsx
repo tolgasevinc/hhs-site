@@ -1,4 +1,4 @@
-import { type CSSProperties, type ChangeEvent, type DragEvent, type FormEvent, type MouseEvent, type PointerEvent, type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { type ChangeEvent, type DragEvent, type FormEvent, type MouseEvent, type PointerEvent, type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import {
@@ -28,6 +28,7 @@ import {
   X,
 } from 'lucide-react';
 import { EnergyRing, ShaderPlane } from './components/ui/background-paper-shaders';
+import { applyInjectedHeadHtml } from './headInject';
 import './App.css';
 
 const headerItemAnimation = {
@@ -37,6 +38,18 @@ const headerItemAnimation = {
 
 const languages = ['TR', 'EN', 'DE'];
 const blogIndexPageSize = 9;
+
+function ServiceIconMask({ iconUrl, className }: { iconUrl: string; className?: string }) {
+  const setIconMaskRef = useCallback((node: HTMLSpanElement | null) => {
+    if (!node) {
+      return;
+    }
+    const safe = iconUrl.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    node.style.setProperty('--service-icon-url', `url("${safe}")`);
+  }, [iconUrl]);
+
+  return <span ref={setIconMaskRef} className={className} aria-hidden="true" />;
+}
 
 type AdminProduct = {
   key: string;
@@ -211,6 +224,16 @@ type AssetItem = {
   references?: string[];
   isUsed?: boolean;
 };
+
+function CatalogImage({ src, alt, fallbackSize = 28 }: { src?: string; alt: string; fallbackSize?: number }) {
+  const [hasError, setHasError] = useState(false);
+
+  if (!src || hasError) {
+    return <Package size={fallbackSize} strokeWidth={2.2} />;
+  }
+
+  return <img src={src} alt={alt} onError={() => setHasError(true)} />;
+}
 
 type AssetFolderKey = 'all' | 'urun' | 'kategori' | 'blog' | 'sayfa' | 'referans' | 'other';
 
@@ -409,6 +432,7 @@ type ContactSettings = {
   googleMapUrl: string;
   appleMapUrl: string;
   footerDescription: string;
+  headHtml: string;
 };
 
 type PushoverSettings = {
@@ -524,7 +548,7 @@ type AdminSection =
   | 'serviceRequests'
   | 'users'
   | 'database';
-type SettingsTab = 'footer' | 'contact' | 'pushover';
+type SettingsTab = 'footer' | 'contact' | 'googleAnalytics' | 'pushover';
 
 type DatabaseColumn = {
   name: string;
@@ -601,6 +625,7 @@ const defaultContactSettings: ContactSettings = {
   googleMapUrl: '',
   appleMapUrl: '',
   footerDescription: 'Otomatik kapı, bariyer ve geçiş kontrol sistemlerinde keşif, satış, montaj ve teknik destek.',
+  headHtml: '',
 };
 
 const defaultPushoverSettings: PushoverSettings = {
@@ -640,6 +665,19 @@ const contactSettingFields: { key: keyof ContactSettings; label: string; placeho
     placeholder: 'Footer logo altında gösterilecek kısa açıklama',
   },
 ];
+
+const serializeContactSettingsPayload = (form: ContactSettings): ContactSettings => ({
+  phonePrimary: form.phonePrimary.trim(),
+  phoneSecondary: form.phoneSecondary.trim(),
+  whatsapp: form.whatsapp.trim(),
+  service: form.service.trim(),
+  email: form.email.trim(),
+  address: form.address.trim(),
+  googleMapUrl: form.googleMapUrl.trim(),
+  appleMapUrl: form.appleMapUrl.trim(),
+  footerDescription: form.footerDescription.trim(),
+  headHtml: form.headHtml.trim(),
+});
 
 const serviceRequestTypes = [
   { value: 'Arıza', label: 'Arıza', tone: 'danger', icon: '!' },
@@ -803,6 +841,20 @@ const createProductKeyFromTitle = (title: string) => {
   return words
     .map((word, index) => (index === 0 ? word : `${word.charAt(0).toUpperCase()}${word.slice(1)}`))
     .join('');
+};
+
+const createUniqueValue = (baseValue: string, existingValues: string[], suffix = 'kopya') => {
+  const normalizedBaseValue = baseValue.trim() || suffix;
+  const existingValueSet = new Set(existingValues);
+  let nextValue = `${normalizedBaseValue}-${suffix}`;
+  let index = 2;
+
+  while (existingValueSet.has(nextValue)) {
+    nextValue = `${normalizedBaseValue}-${suffix}-${index}`;
+    index += 1;
+  }
+
+  return nextValue;
 };
 
 const countWords = (value: string) => value.trim().split(/\s+/).filter(Boolean).length;
@@ -1123,6 +1175,8 @@ function App() {
   const [isConfirmingReferenceDelete, setIsConfirmingReferenceDelete] = useState(false);
   const [isConfirmingSiteServiceDelete, setIsConfirmingSiteServiceDelete] = useState(false);
   const [confirmingAssetDeleteKey, setConfirmingAssetDeleteKey] = useState('');
+  const [confirmingQuoteRequestDeleteId, setConfirmingQuoteRequestDeleteId] = useState('');
+  const [confirmingServiceRequestDeleteId, setConfirmingServiceRequestDeleteId] = useState('');
   const [isConfirmingUserDisable, setIsConfirmingUserDisable] = useState(false);
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTab>('footer');
   const [socialLinkForm, setSocialLinkForm] = useState<Record<string, string>>({});
@@ -1143,6 +1197,7 @@ function App() {
   const [editingBlogKey, setEditingBlogKey] = useState<string | null>(null);
   const [editingCategoryKey, setEditingCategoryKey] = useState<string | null>(null);
   const [editingQuoteQuestionId, setEditingQuoteQuestionId] = useState<string | null>(null);
+  const [copyingQuoteQuestionId, setCopyingQuoteQuestionId] = useState<string | null>(null);
   const [editingReferenceKey, setEditingReferenceKey] = useState<string | null>(null);
   const [editingSiteServiceKey, setEditingSiteServiceKey] = useState<string | null>(null);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -1273,6 +1328,12 @@ function App() {
   const phoneSecondaryHref = createPhoneHref(contactSettings.phoneSecondary);
   const whatsappHref = createWhatsAppHref(contactSettings.whatsapp);
   const emailHref = createMailHref(contactSettings.email);
+
+  useEffect(() => {
+    const undo = applyInjectedHeadHtml(contactSettings.headHtml);
+
+    return undo;
+  }, [contactSettings.headHtml]);
   const selectedServiceRequestType =
     serviceRequestTypes.find((requestType) => requestType.value === serviceRequestForm.requestType) ??
     serviceRequestTypes[0];
@@ -1362,10 +1423,12 @@ function App() {
     .join('\n');
   const quotePhoneDigits = quoteContactForm.phone.replace(/\D/g, '').slice(0, 10);
   const quoteFullPhone = quotePhoneDigits ? `+90 ${quotePhoneDigits}` : '';
+  const servicePhoneDigits = serviceRequestForm.phone.replace(/\D/g, '').slice(0, 10);
   const isQuoteContactComplete =
     quoteContactForm.fullName.trim().length > 1 &&
     quotePhoneDigits.length === 10 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(quoteContactForm.email.trim());
+  const isServiceRequestContactComplete = serviceRequestForm.fullName.trim().length > 1 && servicePhoneDigits.length === 10;
   const quoteContinueMessage = [
     'Merhaba, teklif almak istiyorum.',
     selectedQuoteCategory ? `Kategori: ${selectedQuoteCategory.title}` : '',
@@ -1485,9 +1548,10 @@ function App() {
     setActiveLatestBlogIndex((currentIndex) => (currentIndex - 1 + latestBlogPosts.length) % latestBlogPosts.length);
   };
 
-  const getLatestBlogImageStyle = (index: number): CSSProperties => {
+  const getLatestBlogStackItemClassName = (index: number) => {
+    const base = 'latestBlogStackImage';
     if (latestBlogPosts.length <= 1) {
-      return { opacity: 1, transform: 'translateX(-50%) translateY(0) scale(1)', zIndex: 3 };
+      return `${base} ${base}--single`;
     }
 
     const isActive = index === normalizedLatestBlogIndex;
@@ -1495,28 +1559,18 @@ function App() {
     const isNext = index === (normalizedLatestBlogIndex + 1) % latestBlogPosts.length;
 
     if (isActive) {
-      return { opacity: 1, pointerEvents: 'auto', transform: 'translateX(-50%) translateY(0) scale(1)', zIndex: 3 };
+      return `${base} ${base}--active`;
     }
 
     if (isPrevious) {
-      return {
-        opacity: 0.92,
-        pointerEvents: 'auto',
-        transform: 'translateX(calc(-50% - clamp(54px, 13vw, 104px))) translateY(-56px) scale(0.78) rotateY(16deg)',
-        zIndex: 2,
-      };
+      return `${base} ${base}--previous`;
     }
 
     if (isNext) {
-      return {
-        opacity: 0.92,
-        pointerEvents: 'auto',
-        transform: 'translateX(calc(-50% + clamp(54px, 13vw, 104px))) translateY(-56px) scale(0.78) rotateY(-16deg)',
-        zIndex: 2,
-      };
+      return `${base} ${base}--next`;
     }
 
-    return { opacity: 0, pointerEvents: 'none', transform: 'translateX(-50%) translateY(24px) scale(0.66)', zIndex: 1 };
+    return `${base} ${base}--hidden`;
   };
 
   const closePendingImageCrop = () => {
@@ -2183,6 +2237,34 @@ function App() {
     setIsConfirmingProductDelete(false);
     setIsProductModalOpen(true);
     setAdminMessage('');
+  };
+
+  const openCopyProductModal = (product: AdminProduct) => {
+    const copiedTitle = `${product.title} Kopya`;
+    const copiedKey = createUniqueValue(product.key, adminProducts.map((item) => item.key));
+    const copiedSlug = createUniqueValue(product.slug, adminProducts.map((item) => item.slug));
+
+    setEditingProductKey(null);
+    setProductForm({
+      key: copiedKey,
+      categoryKey: product.categoryKey,
+      title: copiedTitle,
+      slug: copiedSlug,
+      description: product.description,
+      metaTitle: product.metaTitle,
+      metaKeywords: product.metaKeywords,
+      metaDescription: product.metaDescription,
+      image: '',
+      imageSquare: '',
+      imageHorizontal: '',
+      imageVertical: '',
+      sortOrder: String((product.sortOrder ?? 0) + 1),
+      alt: '',
+      badges: product.badges.join(', '),
+    });
+    setIsConfirmingProductDelete(false);
+    setIsProductModalOpen(true);
+    setAdminMessage('Ürün resimsiz kopyalandı. Kaydetmeden önce alanları kontrol edin.');
   };
 
   const closeProductModal = () => {
@@ -2901,6 +2983,41 @@ function App() {
     }
   };
 
+  const deleteQuoteRequest = async (requestId: string) => {
+    if (confirmingQuoteRequestDeleteId !== requestId) {
+      setConfirmingQuoteRequestDeleteId(requestId);
+      return;
+    }
+
+    setClosingRequestId(requestId);
+
+    try {
+      const response = await authorizedFetch(`/api/quote-requests/${encodeURIComponent(requestId)}`, {
+        method: 'DELETE',
+      });
+      const data = (await response.json().catch(() => null)) as { requests?: QuoteRequest[] } | null;
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (!response.ok || !data?.requests) {
+        setAdminMessage('Teklif talebi silinemedi.');
+        return;
+      }
+
+      setQuoteRequests(data.requests);
+      setConfirmingQuoteRequestDeleteId('');
+      setAdminMessage('Teklif talebi silindi.');
+    } catch {
+      setAdminMessage('Teklif talebi silinemedi. API bağlantısını kontrol edin.');
+    } finally {
+      setClosingRequestId('');
+    }
+  };
+
   const closeServiceRequest = async (requestId: string) => {
     setClosingRequestId(requestId);
 
@@ -2925,6 +3042,41 @@ function App() {
       setAdminMessage('Servis talebi kapatıldı.');
     } catch {
       setAdminMessage('Servis talebi kapatılamadı. API bağlantısını kontrol edin.');
+    } finally {
+      setClosingRequestId('');
+    }
+  };
+
+  const deleteServiceRequest = async (requestId: string) => {
+    if (confirmingServiceRequestDeleteId !== requestId) {
+      setConfirmingServiceRequestDeleteId(requestId);
+      return;
+    }
+
+    setClosingRequestId(requestId);
+
+    try {
+      const response = await authorizedFetch(`/api/service-requests/${encodeURIComponent(requestId)}`, {
+        method: 'DELETE',
+      });
+      const data = (await response.json().catch(() => null)) as { requests?: ServiceRequest[] } | null;
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (!response.ok || !data?.requests) {
+        setAdminMessage('Servis talebi silinemedi.');
+        return;
+      }
+
+      setServiceRequests(data.requests);
+      setConfirmingServiceRequestDeleteId('');
+      setAdminMessage('Servis talebi silindi.');
+    } catch {
+      setAdminMessage('Servis talebi silinemedi. API bağlantısını kontrol edin.');
     } finally {
       setClosingRequestId('');
     }
@@ -3333,6 +3485,7 @@ function App() {
 
   const openEditQuoteQuestionModal = (question: QuoteQuestion) => {
     setEditingQuoteQuestionId(question.id);
+    setCopyingQuoteQuestionId(null);
     setQuoteQuestionFormCategoryKey(question.categoryKey);
     setQuoteQuestionFormProductKey(question.productKey ?? '');
     setQuoteQuestionForm({
@@ -3352,9 +3505,37 @@ function App() {
     setAdminMessage('');
   };
 
+  const openCopyQuoteQuestionModal = (question: QuoteQuestion) => {
+    const sourceProductKey = question.productKey ?? '';
+    const targetProductKey =
+      adminProducts.find((product) => product.categoryKey === question.categoryKey && product.key !== sourceProductKey)?.key ??
+      sourceProductKey;
+
+    setEditingQuoteQuestionId(null);
+    setCopyingQuoteQuestionId(question.id);
+    setQuoteQuestionFormCategoryKey(question.categoryKey);
+    setQuoteQuestionFormProductKey(targetProductKey);
+    setQuoteQuestionForm({
+      id: `quote_${crypto.randomUUID()}`,
+      question: question.question,
+      description: question.description,
+      imageUrl: question.imageUrl ?? '',
+      answerType: question.answerType,
+      options: question.options.join('\n'),
+      defaultValue: question.defaultValue,
+      maxLength: question.maxLength ? String(question.maxLength) : '',
+      decimalPlaces: String(question.decimalPlaces ?? 0),
+      isRequired: question.isRequired,
+      isActive: question.isActive,
+    });
+    setIsQuoteQuestionModalOpen(true);
+    setAdminMessage('Soru kopyalandı. Hedef kategori ve ürünü seçip kaydedin.');
+  };
+
   const closeQuoteQuestionModal = () => {
     setIsQuoteQuestionModalOpen(false);
     setEditingQuoteQuestionId(null);
+    setCopyingQuoteQuestionId(null);
     setQuoteQuestionForm(createEmptyQuoteQuestionForm());
   };
 
@@ -3640,11 +3821,7 @@ function App() {
         headers: {
           'content-type': 'application/json',
         },
-        body: JSON.stringify(
-          Object.fromEntries(
-            contactSettingFields.map((field) => [field.key, contactSettingsForm[field.key].trim()]),
-          ),
-        ),
+        body: JSON.stringify(serializeContactSettingsPayload(contactSettingsForm)),
       });
       const data = (await response.json()) as { settings?: ContactSettings };
 
@@ -3655,16 +3832,16 @@ function App() {
       }
 
       if (!response.ok || !data.settings) {
-        setAdminMessage('İletişim bilgileri kaydedilemedi. Lütfen tekrar deneyin.');
+        setAdminMessage('Ayarlar kaydedilemedi. Lütfen tekrar deneyin.');
         return;
       }
 
       setContactSettings(data.settings);
       setContactSettingsForm(data.settings);
-      setAdminMessage('İletişim bilgileri güncellendi.');
+      setAdminMessage('Ayarlar güncellendi.');
       closeSettingsModal();
     } catch {
-      setAdminMessage('İletişim bilgileri kaydedilemedi. API bağlantısını kontrol edin.');
+      setAdminMessage('Ayarlar kaydedilemedi. API bağlantısını kontrol edin.');
     } finally {
       setIsSavingContactSettings(false);
     }
@@ -3787,6 +3964,7 @@ function App() {
     const editedQuestion = editingQuoteQuestionId
       ? quoteQuestions.find((question) => question.id === editingQuoteQuestionId)
       : null;
+    const isCopyingQuestion = Boolean(copyingQuoteQuestionId);
     const questions = [
       ...existingProductQuestions.map((question, index) => ({
         ...question,
@@ -3795,7 +3973,7 @@ function App() {
       })),
       {
         ...nextQuestion,
-        sortOrder: editedQuestion?.sortOrder ?? existingProductQuestions.length + 1,
+        sortOrder: isCopyingQuestion ? existingProductQuestions.length + 1 : editedQuestion?.sortOrder ?? existingProductQuestions.length + 1,
       },
     ]
       .sort((firstQuestion, secondQuestion) => firstQuestion.sortOrder - secondQuestion.sortOrder)
@@ -3841,7 +4019,7 @@ function App() {
       ]);
       setQuoteQuestionCategoryKey(quoteQuestionFormCategoryKey);
       setQuoteQuestionProductKey(quoteQuestionFormProductKey);
-      setAdminMessage(editingQuoteQuestionId ? 'Teklif sorusu güncellendi.' : 'Teklif sorusu eklendi.');
+      setAdminMessage(editingQuoteQuestionId ? 'Teklif sorusu güncellendi.' : isCopyingQuestion ? 'Teklif sorusu kopyalandı.' : 'Teklif sorusu eklendi.');
       closeQuoteQuestionModal();
     } catch {
       setAdminMessage('Teklif soruları kaydedilemedi. API bağlantısını kontrol edin.');
@@ -3931,7 +4109,8 @@ function App() {
   };
 
   const submitQuoteRequest = async (isAnonymous: boolean) => {
-    if (!selectedQuoteCategory || !selectedQuoteProduct || isQuoteContinueDisabled || (!isAnonymous && !isQuoteContactComplete)) {
+    if (!selectedQuoteCategory || !selectedQuoteProduct || isQuoteContinueDisabled || !isQuoteContactComplete) {
+      setQuoteSubmitMessage('Devam etmek için telefon numaranızı eksiksiz girin.');
       return;
     }
 
@@ -3964,7 +4143,7 @@ function App() {
           productKey: selectedQuoteProduct.key,
           productTitle: selectedQuoteProduct.title,
           fullName: isAnonymous ? '' : quoteContactForm.fullName.trim(),
-          phone: isAnonymous ? '' : quoteFullPhone,
+          phone: quoteFullPhone,
           email: isAnonymous ? '' : quoteContactForm.email.trim(),
           answers: activeQuoteQuestions.map((question) => {
             const answer = quoteAnswers[question.id];
@@ -4002,13 +4181,19 @@ function App() {
 
   const submitServiceRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const phoneSuffix = servicePhoneDigits;
+
+    if (!isServiceRequestContactComplete) {
+      setServiceRequestMessage('Devam etmek için telefon numaranızı eksiksiz girin.');
+      return;
+    }
+
     setIsSubmittingServiceRequest(true);
     setServiceRequestMessage('');
 
     const nameParts = serviceRequestForm.fullName.trim().split(/\s+/).filter(Boolean);
     const firstName = nameParts[0] ?? '';
     const lastName = nameParts.slice(1).join(' ') || '-';
-    const phoneSuffix = serviceRequestForm.phone.replace(/\D/g, '');
     const payload = {
       requestType: serviceRequestForm.requestType.trim(),
       firstName,
@@ -4874,21 +5059,24 @@ function App() {
                 {visibleAdminProducts.length === 0 ? (
                   <p className="adminProductEmpty">Bu kategoride ürün bulunamadı.</p>
                 ) : visibleAdminProducts.map((product) => (
-                  <button
-                    className="adminProductCard"
-                    key={product.key}
-                    type="button"
-                    onClick={() => openEditProductModal(product)}
-                  >
-                    <img src={product.imageSquare || product.imageHorizontal || product.image} alt={product.alt} />
+                  <article className="adminProductCard" key={product.key}>
+                    <CatalogImage src={product.imageSquare || product.imageHorizontal || product.image} alt={product.alt || product.title} />
                     <div>
                       <span>{product.categoryTitle}</span>
                       <h2>{product.title}</h2>
                       <p>
                         Sıra: {product.sortOrder} {product.badges.length ? ` / ${product.badges.slice(0, 2).join(' / ')}` : ''}
                       </p>
+                      <div className="adminProductCardActions">
+                        <button type="button" onClick={() => openEditProductModal(product)}>
+                          Düzenle
+                        </button>
+                        <button type="button" onClick={() => openCopyProductModal(product)}>
+                          Kopyala
+                        </button>
+                      </div>
                     </div>
-                  </button>
+                  </article>
                 ))}
               </div>
             </>
@@ -5188,9 +5376,14 @@ function App() {
                           {question.isRequired && <span>Zorunlu</span>}
                           {question.defaultValue && <span>Varsayılan: {question.defaultValue}</span>}
                         </div>
-                        <button type="button" onClick={() => openEditQuoteQuestionModal(question)}>
-                          Düzenle
-                        </button>
+                        <div className="adminQuoteQuestionActions">
+                          <button type="button" onClick={() => openEditQuoteQuestionModal(question)}>
+                            Düzenle
+                          </button>
+                          <button type="button" onClick={() => openCopyQuoteQuestionModal(question)}>
+                            Kopyala
+                          </button>
+                        </div>
                       </article>
                     ))}
                   </div>
@@ -5244,6 +5437,14 @@ function App() {
                                 {closingRequestId === request.id ? 'Kapatılıyor...' : 'Kapat'}
                               </button>
                             )}
+                            <button
+                              className={`dangerButton${confirmingQuoteRequestDeleteId === request.id ? ' confirmDelete' : ''}`}
+                              type="button"
+                              onClick={() => deleteQuoteRequest(request.id)}
+                              disabled={closingRequestId === request.id}
+                            >
+                              {confirmingQuoteRequestDeleteId === request.id ? 'Silme işlemini onayla' : 'Sil'}
+                            </button>
                           </div>
                         </div>
 
@@ -5327,6 +5528,14 @@ function App() {
                                 {closingRequestId === request.id ? 'Kapatılıyor...' : 'Kapat'}
                               </button>
                             )}
+                            <button
+                              className={`dangerButton${confirmingServiceRequestDeleteId === request.id ? ' confirmDelete' : ''}`}
+                              type="button"
+                              onClick={() => deleteServiceRequest(request.id)}
+                              disabled={closingRequestId === request.id}
+                            >
+                              {confirmingServiceRequestDeleteId === request.id ? 'Silme işlemini onayla' : 'Sil'}
+                            </button>
                           </div>
                         </div>
 
@@ -5767,7 +5976,9 @@ function App() {
                         ? 'Footer'
                         : activeSettingsTab === 'contact'
                           ? 'İletişim Bilgileri'
-                          : 'Pushover Bildirimleri'}
+                          : activeSettingsTab === 'googleAnalytics'
+                            ? 'Google Analytics'
+                            : 'Pushover Bildirimleri'}
                     </h2>
                   </div>
                   <button type="button" aria-label="Modalı kapat" onClick={closeSettingsModal}>
@@ -5790,6 +6001,13 @@ function App() {
                       onClick={() => setActiveSettingsTab('contact')}
                     >
                       İletişim
+                    </button>
+                    <button
+                      className={activeSettingsTab === 'googleAnalytics' ? 'active' : ''}
+                      type="button"
+                      onClick={() => setActiveSettingsTab('googleAnalytics')}
+                    >
+                      Google Analytics
                     </button>
                     <button
                       className={activeSettingsTab === 'pushover' ? 'active' : ''}
@@ -5853,6 +6071,33 @@ function App() {
                           )}
                         </label>
                       ))}
+
+                      <div className="adminFormActions">
+                        <button type="button" aria-label="Vazgeç" onClick={closeSettingsModal}>
+                          <X size={18} strokeWidth={2.4} />
+                        </button>
+                        <button className="adminSaveButton" type="button" aria-label="Kaydet" disabled={isSavingContactSettings} onClick={submitClosestForm}>
+                          <Check size={18} strokeWidth={2.4} />
+                        </button>
+                      </div>
+                    </form>
+                  ) : activeSettingsTab === 'googleAnalytics' ? (
+                    <form className="adminProductForm adminFooterForm" onSubmit={saveContactSettings}>
+                      <label className="adminFormWide">
+                        &lt;head&gt; içi kod
+                        <textarea
+                          className="adminMonospaceField"
+                          rows={12}
+                          spellCheck={false}
+                          value={contactSettingsForm.headHtml}
+                          onChange={(event) => updateContactSettingsForm('headHtml', event.target.value)}
+                          placeholder={'<!-- Google etiket asistanından aldığınız gtag/snippet buraya -->\n<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXX"></script>\n<script>...</script>'}
+                        />
+                        <small>
+                          Ölçüm kimliği veya tüm snippet; kaydedildiğinde tüm sayfalarda gerçek{' '}
+                          <code>&lt;head&gt;</code> içine eklenir. Yalnızca güvendiğiniz kodu yapıştırın.
+                        </small>
+                      </label>
 
                       <div className="adminFormActions">
                         <button type="button" aria-label="Vazgeç" onClick={closeSettingsModal}>
@@ -6100,7 +6345,7 @@ function App() {
                   <div>
                     <p>Teklif Soruları</p>
                     <h2 id="quote-question-modal-title">
-                      {editingQuoteQuestionId ? 'Soruyu Düzenle' : 'Yeni Soru'}
+                      {editingQuoteQuestionId ? 'Soruyu Düzenle' : copyingQuoteQuestionId ? 'Soruyu Kopyala' : 'Yeni Soru'}
                     </h2>
                   </div>
                   <button type="button" aria-label="Modalı kapat" onClick={closeQuoteQuestionModal}>
@@ -6605,10 +6850,9 @@ function App() {
                     İkon
                     <div className="adminServiceIconUpload">
                       {siteServiceForm.iconUrl && (
-                        <span
+                        <ServiceIconMask
+                          iconUrl={siteServiceForm.iconUrl}
                           className="serviceIconMask adminServiceIconPreview"
-                          style={{ '--service-icon-url': `url("${siteServiceForm.iconUrl}")` } as CSSProperties}
-                          aria-hidden="true"
                         />
                       )}
                       <AdminImageUploadControl
@@ -7170,6 +7414,116 @@ function App() {
   if (blogSlug) {
     return (
       <main className="page blogDetailPage">
+        <header className="siteHeader">
+          <motion.a
+            className="logoLink"
+            href="/"
+            aria-label="HHS Otomatik Kapı ana sayfa"
+            initial={{
+              opacity: 0,
+              width: 8,
+              height: 8,
+              borderRadius: 999,
+              y: -8,
+            }}
+            animate={{
+              opacity: 1,
+              width: [8, 52, 92],
+              height: [8, 52, 52],
+              borderRadius: [999, 999, 6],
+              y: 0,
+            }}
+            transition={{
+              duration: 0.9,
+              ease: 'easeInOut',
+              times: [0, 0.48, 1],
+            }}
+          >
+            <motion.img
+              src="/apple-touch-icon.png"
+              alt="HHS Otomatik Kapı"
+              initial={{ opacity: 0, scale: 0.72 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.35, delay: 0.58, ease: 'easeOut' }}
+            />
+          </motion.a>
+
+          <div className="headerCenter">
+            <motion.a
+              className="headerQuoteButton"
+              href="/#iletisim"
+              initial={headerItemAnimation.initial}
+              animate={headerItemAnimation.animate}
+              transition={{ duration: 0.45, delay: 0.95, ease: 'easeOut' }}
+            >
+              Teklif Al
+            </motion.a>
+          </div>
+
+          <nav className="headerActions" aria-label="Üst menü">
+            <motion.button
+              className="iconButton"
+              type="button"
+              aria-label="Ara"
+              initial={headerItemAnimation.initial}
+              animate={headerItemAnimation.animate}
+              transition={{ duration: 0.45, delay: 0.95, ease: 'easeOut' }}
+            >
+              <Search size={22} strokeWidth={2.2} />
+            </motion.button>
+
+            <motion.div
+              className="languageButton"
+              initial={headerItemAnimation.initial}
+              animate={headerItemAnimation.animate}
+              transition={{ duration: 0.45, delay: 1.08, ease: 'easeOut' }}
+            >
+              <select
+                aria-label="Dil seçimi"
+                value={language}
+                onChange={(event) => setLanguage(event.target.value)}
+              >
+                {languages.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={18} strokeWidth={2.3} />
+            </motion.div>
+
+            <motion.button
+              className="iconButton"
+              type="button"
+              aria-label="Menüyü aç"
+              onClick={() => setIsHeaderMenuOpen((isOpen) => !isOpen)}
+              initial={headerItemAnimation.initial}
+              animate={headerItemAnimation.animate}
+              transition={{ duration: 0.45, delay: 1.21, ease: 'easeOut' }}
+            >
+              <Menu size={28} strokeWidth={2.2} />
+            </motion.button>
+          </nav>
+
+          <AnimatePresence>
+            {isHeaderMenuOpen && (
+              <motion.nav
+                className="headerMenuPanel"
+                aria-label="Ana menü"
+                initial={{ opacity: 0, y: -10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                transition={{ duration: 0.18 }}
+              >
+                <a href="/" onClick={() => setIsHeaderMenuOpen(false)}>Ana Sayfa</a>
+                <a href="/hizmetler" onClick={() => setIsHeaderMenuOpen(false)}>Hizmetler</a>
+                <a href="/blog" onClick={() => setIsHeaderMenuOpen(false)}>Blog</a>
+                <a href="/#iletisim" onClick={() => setIsHeaderMenuOpen(false)}>İletişim</a>
+              </motion.nav>
+            )}
+          </AnimatePresence>
+        </header>
+
         <article className="blogDetail">
           <a className="blogBackLink" href="/blog">Tüm blog yazıları</a>
           {selectedBlogPost ? (
@@ -7191,6 +7545,82 @@ function App() {
             </>
           )}
         </article>
+
+        <footer className="siteFooter">
+          <div className="footerBrand">
+            <a className="footerLogo" href="/" aria-label="HHS Otomatik Kapı ana sayfa">
+              <img src="/apple-touch-icon.png" alt="HHS Otomatik Kapı" />
+            </a>
+            <p>{contactSettings.footerDescription}</p>
+          </div>
+
+          <div className="footerColumn">
+            <h2>İletişim</h2>
+            <a className="footerContactLink" href={phonePrimaryHref}>
+              <span>
+                <Phone size={15} strokeWidth={2.4} />
+              </span>
+              {contactSettings.phonePrimary}
+            </a>
+            {contactSettings.phoneSecondary && (
+              <a className="footerContactLink" href={phoneSecondaryHref}>
+                <span>
+                  <Phone size={15} strokeWidth={2.4} />
+                </span>
+                {contactSettings.phoneSecondary}
+              </a>
+            )}
+            <a className="footerContactLink" href={whatsappHref} target="_blank" rel="noopener noreferrer">
+              <span>
+                <img src="https://cdn.simpleicons.org/whatsapp/25d366" alt="" />
+              </span>
+              {contactSettings.whatsapp}
+            </a>
+            <a className="footerContactLink" href={emailHref}>
+              <span>
+                <Mail size={15} strokeWidth={2.4} />
+              </span>
+              {contactSettings.email}
+            </a>
+          </div>
+
+          <div className="footerColumn">
+            <h2>Sayfalar</h2>
+            <a href="/">Ana Sayfa</a>
+            <a href="/hizmetler">Hizmetler</a>
+            <a href="/#referanslar">Referanslar</a>
+            <a href="/#iletisim">İletişim</a>
+          </div>
+
+          <div className="footerColumn">
+            <h2>Sosyal Medya</h2>
+            <div className="footerSocialLinks">
+              {socialPlatforms.map((platform) => {
+                const link = socialLinks.find((item) => item.platform === platform.platform);
+
+                if (link && !link.isActive) {
+                  return null;
+                }
+
+                return (
+                  <a href={link?.url || platform.defaultUrl} key={platform.platform} target="_blank" rel="noreferrer">
+                    <span>
+                      <img src={platform.iconUrl} alt="" />
+                    </span>
+                    {link?.label ?? platform.label}
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="footerBottom">
+            <span>© 2026 HHS Otomatik Kapı. Tüm hakları saklıdır.</span>
+            <a href="/panel" target="_blank" rel="noreferrer">
+              Yönetim Paneli
+            </a>
+          </div>
+        </footer>
       </main>
     );
   }
@@ -7339,11 +7769,7 @@ function App() {
                       >
                         <span>
                           {service.iconUrl && (
-                            <span
-                              className="serviceIconMask"
-                              style={{ '--service-icon-url': `url("${service.iconUrl}")` } as CSSProperties}
-                              aria-hidden="true"
-                            />
+                            <ServiceIconMask iconUrl={service.iconUrl} className="serviceIconMask" />
                           )}
                           <span>{service.title}</span>
                         </span>
@@ -7372,11 +7798,7 @@ function App() {
                   {additionalSiteServices.map((service) => (
                     <button type="button" key={service.key} onClick={() => setSelectedSiteService(service)}>
                       {service.iconUrl && (
-                        <span
-                          className="serviceIconMask"
-                          style={{ '--service-icon-url': `url("${service.iconUrl}")` } as CSSProperties}
-                          aria-hidden="true"
-                        />
+                        <ServiceIconMask iconUrl={service.iconUrl} className="serviceIconMask" />
                       )}
                       <span>{service.title}</span>
                     </button>
@@ -7421,11 +7843,7 @@ function App() {
                   <p className="quoteModalEyebrow">Hizmet Alanı</p>
                   <h2 id="service-detail-title" className="serviceDetailTitle">
                     {selectedSiteService.iconUrl && (
-                      <span
-                        className="serviceIconMask"
-                        style={{ '--service-icon-url': `url("${selectedSiteService.iconUrl}")` } as CSSProperties}
-                        aria-hidden="true"
-                      />
+                      <ServiceIconMask iconUrl={selectedSiteService.iconUrl} className="serviceIconMask" />
                     )}
                     <span>{selectedSiteService.title}</span>
                   </h2>
@@ -7973,7 +8391,7 @@ function App() {
                               }}
                             >
                               <span className="quoteCategoryThumb">
-                                {category.image ? <img src={category.image} alt={category.title} /> : <Package size={28} strokeWidth={2.2} />}
+                                <CatalogImage src={category.image} alt={category.title} />
                               </span>
                               <span>
                                 <strong>{category.title}</strong>
@@ -7996,7 +8414,7 @@ function App() {
                               }}
                             >
                               <div className="productImageWrap">
-                                <img src={product.imageHorizontal || product.image} alt={product.alt} />
+                                <CatalogImage src={product.imageHorizontal || product.image} alt={product.alt || product.title} />
                               </div>
 
                               <div className="productSlideBody">
@@ -8111,6 +8529,7 @@ function App() {
                       <label>
                         Adı Soyadı
                         <input
+                          required
                           value={quoteContactForm.fullName}
                           onChange={(event) => updateQuoteContactForm('fullName', event.target.value)}
                           placeholder="Adınız Soyadınız"
@@ -8121,8 +8540,10 @@ function App() {
                         <div className="quotePhoneInput">
                           <span>+90</span>
                           <input
+                            required
                             type="tel"
                             inputMode="numeric"
+                            maxLength={10}
                             value={quoteContactForm.phone}
                             onChange={(event) => updateQuoteContactForm('phone', event.target.value)}
                             placeholder="5xx xxx xx xx"
@@ -8132,6 +8553,7 @@ function App() {
                       <label>
                         Mail
                         <input
+                          required
                           type="email"
                           value={quoteContactForm.email}
                           onChange={(event) => updateQuoteContactForm('email', event.target.value)}
@@ -8182,33 +8604,21 @@ function App() {
                         Devam Et
                       </button>
                     ) : (
-                      <>
-                        <button
-                          className="secondary"
-                          type="button"
-                          disabled={!isQuotePrivacyAccepted || isSubmittingQuoteRequest}
-                          data-disabled-reason={!isQuotePrivacyAccepted ? 'Onay beklendiği için pasif.' : undefined}
-                          title={!isQuotePrivacyAccepted ? 'Devam etmek için onay metnini işaretleyin.' : undefined}
-                          onClick={() => submitQuoteRequest(true)}
-                        >
-                          İsimsiz Devam Et
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isQuotePrimaryContinueDisabled}
-                          data-disabled-reason={
-                            !isQuotePrivacyAccepted
-                              ? 'Onay beklendiği için pasif.'
-                              : !isQuoteContactComplete
-                                ? 'İletişim bilgileri eksik olduğu için pasif.'
-                                : undefined
-                          }
-                          title={quotePrimaryContinueDisabledReason || undefined}
-                          onClick={() => submitQuoteRequest(false)}
-                        >
-                          {isSubmittingQuoteRequest ? 'Kaydediliyor...' : 'Devam Et'}
-                        </button>
-                      </>
+                      <button
+                        type="button"
+                        disabled={isQuotePrimaryContinueDisabled}
+                        data-disabled-reason={
+                          !isQuotePrivacyAccepted
+                            ? 'Onay beklendiği için pasif.'
+                            : !isQuoteContactComplete
+                              ? 'İletişim bilgileri eksik olduğu için pasif.'
+                              : undefined
+                        }
+                        title={quotePrimaryContinueDisabledReason || undefined}
+                        onClick={() => submitQuoteRequest(false)}
+                      >
+                        {isSubmittingQuoteRequest ? 'Kaydediliyor...' : 'Devam Et'}
+                      </button>
                     )
                   ) : (
                     <button type="button" disabled>
@@ -8326,8 +8736,10 @@ function App() {
                         <input
                           required
                           type="tel"
+                          inputMode="numeric"
+                          maxLength={10}
                           value={serviceRequestForm.phone}
-                          onChange={(event) => updateServiceRequestForm('phone', event.target.value.replace(/[^\d\s]/g, ''))}
+                          onChange={(event) => updateServiceRequestForm('phone', event.target.value.replace(/\D/g, '').slice(0, 10))}
                           placeholder="5xx xxx xx xx"
                         />
                       </div>
@@ -8349,7 +8761,7 @@ function App() {
                         <button type="button" className="secondary" onClick={() => setIsServiceRequestModalOpen(false)}>
                           Kapat
                         </button>
-                        <button type="submit" disabled={isSubmittingServiceRequest}>
+                        <button type="submit" disabled={isSubmittingServiceRequest || !isServiceRequestContactComplete}>
                           {isSubmittingServiceRequest ? 'Gönderiliyor...' : 'Gönder'}
                         </button>
                       </div>
@@ -8519,11 +8931,7 @@ function App() {
             <button className="serviceAreaCard" type="button" key={service.key} onClick={() => setSelectedSiteService(service)}>
               <h3>
                 {service.iconUrl && (
-                  <span
-                    className="serviceIconMask"
-                    style={{ '--service-icon-url': `url("${service.iconUrl}")` } as CSSProperties}
-                    aria-hidden="true"
-                  />
+                  <ServiceIconMask iconUrl={service.iconUrl} className="serviceIconMask" />
                 )}
                 <span>{service.title}</span>
               </h3>
@@ -8568,11 +8976,7 @@ function App() {
                 <p className="quoteModalEyebrow">Hizmet Alanı</p>
                 <h2 id="service-detail-title" className="serviceDetailTitle">
                   {selectedSiteService.iconUrl && (
-                    <span
-                      className="serviceIconMask"
-                      style={{ '--service-icon-url': `url("${selectedSiteService.iconUrl}")` } as CSSProperties}
-                      aria-hidden="true"
-                    />
+                    <ServiceIconMask iconUrl={selectedSiteService.iconUrl} className="serviceIconMask" />
                   )}
                   <span>{selectedSiteService.title}</span>
                 </h2>
@@ -8665,16 +9069,14 @@ function App() {
                 post.image ? (
                   <img
                     alt=""
-                    className="latestBlogStackImage"
+                    className={getLatestBlogStackItemClassName(index)}
                     key={post.key}
                     src={post.image}
-                    style={getLatestBlogImageStyle(index)}
                   />
                 ) : (
                   <div
-                    className="latestBlogStackImage latestBlogStackFallback"
+                    className={`${getLatestBlogStackItemClassName(index)} latestBlogStackFallback`}
                     key={post.key}
-                    style={getLatestBlogImageStyle(index)}
                   />
                 )
               ))}
