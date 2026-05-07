@@ -89,7 +89,6 @@ type AdminCategory = {
   imageHorizontal: string;
   imageVertical: string;
   sortOrder: number;
-  pageSlug?: string;
 };
 
 type SitePage = {
@@ -1545,9 +1544,24 @@ function App() {
     : [];
   const selectedSolutionTitle = selectedSolutionProduct?.title ?? selectedSolutionCategory?.title ?? '';
   const selectedSolutionHtmlContent = selectedSolutionProduct?.htmlContent ?? selectedSolutionCategory?.htmlContent ?? '';
+  const selectedSolutionImage =
+    selectedSolutionProduct?.imageHorizontal ||
+    selectedSolutionProduct?.image ||
+    selectedSolutionProduct?.imageSquare ||
+    selectedSolutionProduct?.imageVertical ||
+    selectedSolutionCategory?.imageHorizontal ||
+    selectedSolutionCategory?.image ||
+    selectedSolutionCategory?.imageSquare ||
+    selectedSolutionCategory?.imageVertical ||
+    '';
   const selectedSolutionMetaTitle = selectedSolutionProduct?.metaTitle ?? selectedSolutionCategory?.metaTitle ?? '';
   const selectedSolutionMetaKeywords = selectedSolutionProduct?.metaKeywords ?? selectedSolutionCategory?.metaKeywords ?? '';
   const selectedSolutionMetaDescription = selectedSolutionProduct?.metaDescription ?? selectedSolutionCategory?.metaDescription ?? '';
+  const solutionCategoryPageProducts = selectedSolutionCategory
+    ? [...adminProducts]
+        .filter((product) => product.categoryKey === selectedSolutionCategory.key && product.isActive)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+    : [];
   const activeSolutionApplications = siteApplications.filter((application) => {
     if (!application.isActive) {
       return false;
@@ -6108,20 +6122,35 @@ function App() {
                 {visibleAdminProducts.length === 0 ? (
                   <p className="adminProductEmpty">Bu kategoride ürün bulunamadı.</p>
                 ) : visibleAdminProducts.map((product) => (
-                  <article className="adminProductCard" key={product.key}>
+                  <article
+                    className="adminProductCard adminProductCardClickable"
+                    key={product.key}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${product.title} ürününü düzenle`}
+                    onClick={() => openEditProductModal(product)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        openEditProductModal(product);
+                      }
+                    }}
+                  >
                     <CatalogImage src={product.imageSquare || product.imageHorizontal || product.image} alt={product.alt || product.title} />
                     <div>
-                      <span>{product.categoryTitle}</span>
                       <h2>{product.title}</h2>
-                      <p>
-                        Sıra: {product.sortOrder} {product.badges.length ? ` / ${product.badges.slice(0, 2).join(' / ')}` : ''}
-                      </p>
+                      {product.badges.length ? <p>{product.badges.slice(0, 2).join(' / ')}</p> : null}
                       <div className="adminProductCardActions">
-                        <button type="button" onClick={() => openEditProductModal(product)}>
-                          Düzenle
-                        </button>
-                        <button type="button" onClick={() => openCopyProductModal(product)}>
-                          Kopyala
+                        <button
+                          type="button"
+                          className="iconOnly"
+                          aria-label={`${product.title} ürününü kopyala`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openCopyProductModal(product);
+                          }}
+                        >
+                          <Copy size={15} strokeWidth={2.4} />
                         </button>
                       </div>
                     </div>
@@ -9175,8 +9204,30 @@ function App() {
               </a>
               {selectedSolutionProduct || selectedSolutionCategory ? (
                 <>
-                  <p className="eyebrow">Çözüm</p>
-                  <h1>{selectedSolutionTitle}</h1>
+                  {selectedSolutionImage ? <img src={selectedSolutionImage} alt={selectedSolutionTitle || 'Ürün görseli'} /> : null}
+                  {solutionCategoryPageProducts.length > 0 ? (
+                    <section className="solutionCategoryProducts" aria-labelledby="solution-category-products-heading">
+                      <div className="solutionCategoryProductsHeader">
+                        <p className="eyebrow">Çözüm alanı</p>
+                        <h2 id="solution-category-products-heading">Ürünler</h2>
+                      </div>
+                      <div className="solutionCategoryProductsGrid">
+                        {solutionCategoryPageProducts.map((product) => (
+                          <a
+                            key={product.key}
+                            className="solutionCategoryProductCard"
+                            href={`/cozum/${product.slug}`}
+                          >
+                            <CatalogImage
+                              src={product.imageSquare || product.imageHorizontal || product.image}
+                              alt={product.alt || product.title}
+                            />
+                            <span>{product.title}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
                   <div className="blogDetailContent" dangerouslySetInnerHTML={{ __html: selectedSolutionHtmlContent }} />
                   {activeSolutionApplications.length > 0 && (
                     <section className="solutionApplications">
@@ -9294,8 +9345,6 @@ function App() {
                 </>
               ) : (
                 <>
-                  <p className="eyebrow">Çözüm</p>
-                  <h1>Sayfa bulunamadı</h1>
                   <p>Aradığınız içerik yayında olmayabilir veya kaldırılmış olabilir.</p>
                 </>
               )}

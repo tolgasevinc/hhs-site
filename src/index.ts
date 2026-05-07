@@ -49,7 +49,6 @@ type CategoryInput = {
   imageHorizontal?: string;
   imageVertical?: string;
   sortOrder?: number;
-  pageSlug?: string;
 };
 
 type SitePageInput = {
@@ -294,7 +293,6 @@ type CategoryRow = {
   image_horizontal_url: string;
   image_vertical_url: string;
   sort_order: number;
-  page_slug: string | null;
 };
 
 type SitePageRow = {
@@ -1457,15 +1455,6 @@ const ensureSitePagesTable = async (db: D1Database) => {
   await db.prepare('CREATE INDEX IF NOT EXISTS idx_site_pages_active_sort ON site_pages(is_active, sort_order)').run();
 };
 
-const ensureProductCategoriesPageSlugColumn = async (db: D1Database) => {
-  const columns = await db.prepare('PRAGMA table_info(product_categories)').all<{ name: string }>();
-  const hasPageSlug = columns.results.some((column) => column.name === 'page_slug');
-
-  if (!hasPageSlug) {
-    await db.prepare("ALTER TABLE product_categories ADD COLUMN page_slug TEXT NOT NULL DEFAULT ''").run();
-  }
-};
-
 const ensureProductCategoriesHtmlContentColumn = async (db: D1Database) => {
   const columns = await db.prepare('PRAGMA table_info(product_categories)').all<{ name: string }>();
   const hasHtmlContent = columns.results.some((column) => column.name === 'html_content');
@@ -1485,12 +1474,11 @@ const ensureProductsHtmlContentColumn = async (db: D1Database) => {
 };
 
 const listCategories = async (db: D1Database) => {
-  await ensureProductCategoriesPageSlugColumn(db);
   await ensureProductCategoriesHtmlContentColumn(db);
 
   const categories = await db
     .prepare(
-      `SELECT key, title, slug, description, html_content, meta_title, meta_keywords, meta_description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order, page_slug
+      `SELECT key, title, slug, description, html_content, meta_title, meta_keywords, meta_description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order
       FROM product_categories
       ORDER BY sort_order ASC, created_at ASC`,
     )
@@ -1510,7 +1498,6 @@ const listCategories = async (db: D1Database) => {
     imageHorizontal: category.image_horizontal_url || category.image_url,
     imageVertical: category.image_vertical_url || category.image_url,
     sortOrder: category.sort_order,
-    pageSlug: category.page_slug?.trim() ?? '',
   }));
 };
 
@@ -2847,12 +2834,11 @@ const deleteQuoteRequest = async (db: D1Database, id: string) => {
 };
 
 const getCategory = async (db: D1Database, key: string) => {
-  await ensureProductCategoriesPageSlugColumn(db);
   await ensureProductCategoriesHtmlContentColumn(db);
 
   const category = await db
     .prepare(
-      `SELECT key, title, slug, description, html_content, meta_title, meta_keywords, meta_description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order, page_slug
+      `SELECT key, title, slug, description, html_content, meta_title, meta_keywords, meta_description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order
       FROM product_categories
       WHERE key = ?`,
     )
@@ -2877,12 +2863,10 @@ const getCategory = async (db: D1Database, key: string) => {
     imageHorizontal: category.image_horizontal_url || category.image_url,
     imageVertical: category.image_vertical_url || category.image_url,
     sortOrder: category.sort_order,
-    pageSlug: category.page_slug?.trim() ?? '',
   };
 };
 
 const createCategory = async (db: D1Database, category: CategoryInput) => {
-  await ensureProductCategoriesPageSlugColumn(db);
   await ensureProductCategoriesHtmlContentColumn(db);
 
   await db
@@ -2900,10 +2884,9 @@ const createCategory = async (db: D1Database, category: CategoryInput) => {
         image_square_url,
         image_horizontal_url,
         image_vertical_url,
-        sort_order,
-        page_slug
+        sort_order
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       category.key,
@@ -2919,7 +2902,6 @@ const createCategory = async (db: D1Database, category: CategoryInput) => {
       category.imageHorizontal ?? category.image ?? '',
       category.imageVertical ?? category.image ?? '',
       category.sortOrder ?? 0,
-      category.pageSlug?.trim() ?? '',
     )
     .run();
 
@@ -2927,7 +2909,6 @@ const createCategory = async (db: D1Database, category: CategoryInput) => {
 };
 
 const updateCategory = async (db: D1Database, key: string, category: CategoryInput) => {
-  await ensureProductCategoriesPageSlugColumn(db);
   await ensureProductCategoriesHtmlContentColumn(db);
 
   await db
@@ -2946,7 +2927,6 @@ const updateCategory = async (db: D1Database, key: string, category: CategoryInp
         image_horizontal_url = ?,
         image_vertical_url = ?,
         sort_order = ?,
-        page_slug = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE key = ?`,
     )
@@ -2963,7 +2943,6 @@ const updateCategory = async (db: D1Database, key: string, category: CategoryInp
       category.imageHorizontal ?? category.image ?? '',
       category.imageVertical ?? category.image ?? '',
       category.sortOrder ?? 0,
-      category.pageSlug?.trim() ?? '',
       key,
     )
     .run();
