@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:web": "vite",
     "build": "tsc -b && vite build",
     "deploy:api": "wrangler deploy",
     "deploy:web": "npm run build && wrangler pages deploy dist --project-name=hhs-site",

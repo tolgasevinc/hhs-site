@@ -20,6 +20,7 @@ type ProductInput = {
   title: string;
   slug: string;
   description?: string;
+  htmlContent?: string;
   metaTitle?: string;
   metaKeywords?: string;
   metaDescription?: string;
@@ -39,6 +40,7 @@ type CategoryInput = {
   title: string;
   slug: string;
   description?: string;
+  htmlContent?: string;
   metaTitle?: string;
   metaKeywords?: string;
   metaDescription?: string;
@@ -54,6 +56,7 @@ type SitePageInput = {
   key?: string;
   slug: string;
   title: string;
+  productKey?: string;
   htmlContent?: string;
   metaTitle?: string;
   metaKeywords?: string;
@@ -125,6 +128,17 @@ type SiteServiceInput = {
   metaKeywords?: string;
   metaDescription?: string;
   iconUrl?: string;
+  imageUrl?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+};
+
+type SiteApplicationInput = {
+  key: string;
+  productKey: string;
+  title: string;
+  summary?: string;
+  description?: string;
   imageUrl?: string;
   sortOrder?: number;
   isActive?: boolean;
@@ -241,6 +255,7 @@ type ProductRow = {
   title: string;
   slug: string;
   description: string;
+  html_content: string;
   meta_title: string;
   meta_keywords: string;
   meta_description: string;
@@ -270,6 +285,7 @@ type CategoryRow = {
   title: string;
   slug: string;
   description: string;
+  html_content: string;
   meta_title: string;
   meta_keywords: string;
   meta_description: string;
@@ -285,6 +301,7 @@ type SitePageRow = {
   key: string;
   slug: string;
   title: string;
+  product_key: string;
   html_content: string;
   meta_title: string;
   meta_keywords: string;
@@ -368,6 +385,22 @@ type SiteServiceRow = {
   meta_keywords: string;
   meta_description: string;
   icon_url: string;
+  image_url: string;
+  sort_order: number;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type SiteApplicationRow = {
+  key: string;
+  product_key: string;
+  product_title: string;
+  category_key: string | null;
+  category_title: string | null;
+  title: string;
+  summary: string;
+  description: string;
   image_url: string;
   sort_order: number;
   is_active: number;
@@ -565,6 +598,14 @@ const getSiteServiceRequestBody = async (request: Request) => {
   }
 };
 
+const getSiteApplicationRequestBody = async (request: Request) => {
+  try {
+    return (await request.json()) as SiteApplicationInput;
+  } catch {
+    return null;
+  }
+};
+
 const getPushoverSettingsRequestBody = async (request: Request) => {
   try {
     return (await request.json()) as PushoverSettingsInput;
@@ -622,11 +663,27 @@ const getAdminUserRequestBody = async (request: Request) => {
 };
 
 const isValidProductInput = (body: ProductInput | null): body is ProductInput => {
-  return Boolean(body?.key && body.categoryKey && body.title && body.slug);
+  if (!body?.key || !body.categoryKey || !body.title || !body.slug) {
+    return false;
+  }
+
+  if (body.htmlContent != null && body.htmlContent.length > SITE_PAGE_HTML_MAX_LENGTH) {
+    return false;
+  }
+
+  return true;
 };
 
 const isValidCategoryInput = (body: CategoryInput | null): body is CategoryInput => {
-  return Boolean(body?.key && body.title && body.slug);
+  if (!body?.key || !body.title || !body.slug) {
+    return false;
+  }
+
+  if (body.htmlContent != null && body.htmlContent.length > SITE_PAGE_HTML_MAX_LENGTH) {
+    return false;
+  }
+
+  return true;
 };
 
 const isValidSocialLinkInput = (body: SocialLinkInput | null): body is SocialLinkInput => {
@@ -672,6 +729,17 @@ const isValidSiteReferenceInput = (body: SiteReferenceInput | null): body is Sit
 
 const isValidSiteServiceInput = (body: SiteServiceInput | null): body is SiteServiceInput => {
   return Boolean(body?.key?.trim() && body.title?.trim() && body.summary?.trim() && body.detail?.trim());
+};
+
+const isValidSiteApplicationInput = (body: SiteApplicationInput | null): body is SiteApplicationInput => {
+  return Boolean(
+    body?.key?.trim() &&
+      body.productKey?.trim() &&
+      body.title?.trim() &&
+      body.summary?.trim() &&
+      body.description?.trim() &&
+      body.imageUrl?.trim(),
+  );
 };
 
 const isValidServiceRequestInput = (body: ServiceRequestInput | null): body is ServiceRequestInput => {
@@ -809,6 +877,7 @@ const getUsedAssetKeys = async (db: D1Database) => {
     db.prepare('SELECT image_url FROM quote_questions').all<AssetUrlRow>(),
     db.prepare('SELECT image_url FROM site_references').all<AssetUrlRow>(),
     db.prepare('SELECT image_url, icon_url FROM site_services').all<AssetUrlRow>(),
+    db.prepare('SELECT image_url FROM site_applications').all<AssetUrlRow>(),
     db.prepare('SELECT avatar_url FROM admin_users').all<AssetUrlRow>(),
   ];
   const results = await Promise.all(
@@ -864,6 +933,7 @@ const getAssetReferences = async (db: D1Database, objectKey: string) => {
     db.prepare('SELECT question AS label FROM quote_questions WHERE image_url LIKE ?').bind(likeValue),
     db.prepare('SELECT title AS label FROM site_references WHERE image_url LIKE ?').bind(likeValue),
     db.prepare('SELECT title AS label FROM site_services WHERE image_url LIKE ? OR icon_url LIKE ?').bind(likeValue, likeValue),
+    db.prepare('SELECT title AS label FROM site_applications WHERE image_url LIKE ?').bind(likeValue),
     db.prepare('SELECT display_name AS label FROM admin_users WHERE avatar_url LIKE ?').bind(likeValue),
   ];
   const results = await Promise.all(
@@ -1294,6 +1364,7 @@ const mapProducts = (products: ProductRow[], badges: BadgeRow[], children: Child
     title: product.title,
     slug: product.slug,
     description: product.description,
+    htmlContent: product.html_content ?? '',
     metaTitle: product.meta_title,
     metaKeywords: product.meta_keywords,
     metaDescription: product.meta_description,
@@ -1316,6 +1387,8 @@ const mapProducts = (products: ProductRow[], badges: BadgeRow[], children: Child
 };
 
 const listProducts = async (db: D1Database) => {
+  await ensureProductsHtmlContentColumn(db);
+
   const products = await db
     .prepare(
       `SELECT
@@ -1325,6 +1398,7 @@ const listProducts = async (db: D1Database) => {
         p.title,
         p.slug,
         p.description,
+        p.html_content,
         p.meta_title,
         p.meta_keywords,
         p.meta_description,
@@ -1359,6 +1433,7 @@ const ensureSitePagesTable = async (db: D1Database) => {
         key TEXT PRIMARY KEY,
         slug TEXT NOT NULL UNIQUE,
         title TEXT NOT NULL,
+        product_key TEXT NOT NULL DEFAULT '',
         html_content TEXT NOT NULL DEFAULT '',
         meta_title TEXT NOT NULL DEFAULT '',
         meta_keywords TEXT NOT NULL DEFAULT '',
@@ -1370,6 +1445,13 @@ const ensureSitePagesTable = async (db: D1Database) => {
       )`,
     )
     .run();
+
+  const columns = await db.prepare('PRAGMA table_info(site_pages)').all<{ name: string }>();
+  const hasProductKey = columns.results.some((column) => column.name === 'product_key');
+
+  if (!hasProductKey) {
+    await db.prepare("ALTER TABLE site_pages ADD COLUMN product_key TEXT NOT NULL DEFAULT ''").run();
+  }
 
   await db.prepare('CREATE INDEX IF NOT EXISTS idx_site_pages_slug ON site_pages(slug)').run();
   await db.prepare('CREATE INDEX IF NOT EXISTS idx_site_pages_active_sort ON site_pages(is_active, sort_order)').run();
@@ -1384,12 +1466,31 @@ const ensureProductCategoriesPageSlugColumn = async (db: D1Database) => {
   }
 };
 
+const ensureProductCategoriesHtmlContentColumn = async (db: D1Database) => {
+  const columns = await db.prepare('PRAGMA table_info(product_categories)').all<{ name: string }>();
+  const hasHtmlContent = columns.results.some((column) => column.name === 'html_content');
+
+  if (!hasHtmlContent) {
+    await db.prepare("ALTER TABLE product_categories ADD COLUMN html_content TEXT NOT NULL DEFAULT ''").run();
+  }
+};
+
+const ensureProductsHtmlContentColumn = async (db: D1Database) => {
+  const columns = await db.prepare('PRAGMA table_info(products)').all<{ name: string }>();
+  const hasHtmlContent = columns.results.some((column) => column.name === 'html_content');
+
+  if (!hasHtmlContent) {
+    await db.prepare("ALTER TABLE products ADD COLUMN html_content TEXT NOT NULL DEFAULT ''").run();
+  }
+};
+
 const listCategories = async (db: D1Database) => {
   await ensureProductCategoriesPageSlugColumn(db);
+  await ensureProductCategoriesHtmlContentColumn(db);
 
   const categories = await db
     .prepare(
-      `SELECT key, title, slug, description, meta_title, meta_keywords, meta_description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order, page_slug
+      `SELECT key, title, slug, description, html_content, meta_title, meta_keywords, meta_description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order, page_slug
       FROM product_categories
       ORDER BY sort_order ASC, created_at ASC`,
     )
@@ -1400,6 +1501,7 @@ const listCategories = async (db: D1Database) => {
     title: category.title,
     slug: category.slug,
     description: category.description,
+    htmlContent: category.html_content ?? '',
     metaTitle: category.meta_title,
     metaKeywords: category.meta_keywords,
     metaDescription: category.meta_description,
@@ -2112,6 +2214,139 @@ const deleteSiteService = async (db: D1Database, key: string) => {
   return listSiteServices(db, true);
 };
 
+const ensureSiteApplicationsTable = async (db: D1Database) => {
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS site_applications (
+        key TEXT PRIMARY KEY,
+        category_key TEXT NOT NULL DEFAULT '',
+        product_key TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL DEFAULT '',
+        description TEXT NOT NULL DEFAULT '',
+        image_url TEXT NOT NULL DEFAULT '',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+    )
+    .run();
+
+  const columns = await db.prepare('PRAGMA table_info(site_applications)').all<{ name: string }>();
+  const columnNames = new Set(columns.results.map((column) => column.name));
+
+  if (!columnNames.has('product_key')) {
+    await db.prepare("ALTER TABLE site_applications ADD COLUMN product_key TEXT NOT NULL DEFAULT ''").run();
+  }
+
+  // Eski category_key verilerini mümkün olduğunca ilk ürün kaydına eşler.
+  if (columnNames.has('category_key')) {
+    await db
+      .prepare(
+        `UPDATE site_applications
+        SET product_key = COALESCE(
+          (
+            SELECT p.key
+            FROM products p
+            WHERE p.category_key = site_applications.category_key
+            ORDER BY p.sort_order ASC, p.title ASC
+            LIMIT 1
+          ),
+          product_key
+        )
+        WHERE product_key = ''`,
+      )
+      .run();
+  }
+
+  await db
+    .prepare('CREATE INDEX IF NOT EXISTS idx_site_applications_product_sort ON site_applications(product_key, sort_order)')
+    .run();
+};
+
+const mapSiteApplication = (application: SiteApplicationRow) => ({
+  key: application.key,
+  productKey: application.product_key,
+  productTitle: application.product_title,
+  categoryKey: application.category_key ?? '',
+  categoryTitle: application.category_title ?? '',
+  title: application.title,
+  summary: application.summary,
+  description: application.description,
+  imageUrl: application.image_url,
+  sortOrder: application.sort_order,
+  isActive: Boolean(application.is_active),
+  createdAt: application.created_at,
+  updatedAt: application.updated_at,
+});
+
+const listSiteApplications = async (db: D1Database, includeInactive = false) => {
+  await ensureSiteApplicationsTable(db);
+  const applications = await db
+    .prepare(
+      `SELECT a.key, a.product_key, COALESCE(p.title, a.product_key) AS product_title, p.category_key, COALESCE(c.title, p.category_key) AS category_title, a.title, a.summary, a.description, a.image_url, a.sort_order, a.is_active, a.created_at, a.updated_at
+      FROM site_applications a
+      LEFT JOIN products p ON p.key = a.product_key
+      LEFT JOIN product_categories c ON c.key = p.category_key
+      ${includeInactive ? '' : 'WHERE a.is_active = 1'}
+      ORDER BY a.sort_order ASC, a.title ASC`,
+    )
+    .all<SiteApplicationRow>();
+
+  return applications.results.map(mapSiteApplication);
+};
+
+const upsertSiteApplication = async (db: D1Database, application: SiteApplicationInput, previousKey?: string) => {
+  await ensureSiteApplicationsTable(db);
+  const key = previousKey ?? application.key.trim();
+
+  const product = await db
+    .prepare('SELECT key, category_key FROM products WHERE key = ? LIMIT 1')
+    .bind(application.productKey.trim())
+    .first<{ key: string; category_key: string }>();
+
+  if (!product?.key) {
+    return null;
+  }
+
+  await db
+    .prepare(
+      `INSERT INTO site_applications (key, category_key, product_key, title, summary, description, image_url, sort_order, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        category_key = excluded.category_key,
+        product_key = excluded.product_key,
+        title = excluded.title,
+        summary = excluded.summary,
+        description = excluded.description,
+        image_url = excluded.image_url,
+        sort_order = excluded.sort_order,
+        is_active = excluded.is_active,
+        updated_at = CURRENT_TIMESTAMP`,
+    )
+    .bind(
+      key,
+      product.category_key?.trim() ?? '',
+      application.productKey.trim(),
+      application.title.trim(),
+      application.summary?.trim() ?? '',
+      application.description?.trim() ?? '',
+      application.imageUrl?.trim() ?? '',
+      Number(application.sortOrder ?? 0),
+      application.isActive === false ? 0 : 1,
+    )
+    .run();
+
+  return listSiteApplications(db, true);
+};
+
+const deleteSiteApplication = async (db: D1Database, key: string) => {
+  await ensureSiteApplicationsTable(db);
+  await db.prepare('DELETE FROM site_applications WHERE key = ?').bind(key).run();
+  return listSiteApplications(db, true);
+};
+
 const ensureServiceRequestsTable = async (db: D1Database) => {
   await db
     .prepare(
@@ -2613,10 +2848,11 @@ const deleteQuoteRequest = async (db: D1Database, id: string) => {
 
 const getCategory = async (db: D1Database, key: string) => {
   await ensureProductCategoriesPageSlugColumn(db);
+  await ensureProductCategoriesHtmlContentColumn(db);
 
   const category = await db
     .prepare(
-      `SELECT key, title, slug, description, meta_title, meta_keywords, meta_description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order, page_slug
+      `SELECT key, title, slug, description, html_content, meta_title, meta_keywords, meta_description, image_url, image_square_url, image_horizontal_url, image_vertical_url, sort_order, page_slug
       FROM product_categories
       WHERE key = ?`,
     )
@@ -2632,6 +2868,7 @@ const getCategory = async (db: D1Database, key: string) => {
     title: category.title,
     slug: category.slug,
     description: category.description,
+    htmlContent: category.html_content ?? '',
     metaTitle: category.meta_title,
     metaKeywords: category.meta_keywords,
     metaDescription: category.meta_description,
@@ -2646,6 +2883,7 @@ const getCategory = async (db: D1Database, key: string) => {
 
 const createCategory = async (db: D1Database, category: CategoryInput) => {
   await ensureProductCategoriesPageSlugColumn(db);
+  await ensureProductCategoriesHtmlContentColumn(db);
 
   await db
     .prepare(
@@ -2654,6 +2892,7 @@ const createCategory = async (db: D1Database, category: CategoryInput) => {
         title,
         slug,
         description,
+        html_content,
         meta_title,
         meta_keywords,
         meta_description,
@@ -2664,13 +2903,14 @@ const createCategory = async (db: D1Database, category: CategoryInput) => {
         sort_order,
         page_slug
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       category.key,
       category.title,
       category.slug,
       category.description ?? '',
+      category.htmlContent ?? '',
       category.metaTitle ?? '',
       category.metaKeywords ?? '',
       category.metaDescription ?? '',
@@ -2688,6 +2928,7 @@ const createCategory = async (db: D1Database, category: CategoryInput) => {
 
 const updateCategory = async (db: D1Database, key: string, category: CategoryInput) => {
   await ensureProductCategoriesPageSlugColumn(db);
+  await ensureProductCategoriesHtmlContentColumn(db);
 
   await db
     .prepare(
@@ -2696,6 +2937,7 @@ const updateCategory = async (db: D1Database, key: string, category: CategoryInp
         title = ?,
         slug = ?,
         description = ?,
+        html_content = ?,
         meta_title = ?,
         meta_keywords = ?,
         meta_description = ?,
@@ -2712,6 +2954,7 @@ const updateCategory = async (db: D1Database, key: string, category: CategoryInp
       category.title,
       category.slug,
       category.description ?? '',
+      category.htmlContent ?? '',
       category.metaTitle ?? '',
       category.metaKeywords ?? '',
       category.metaDescription ?? '',
@@ -2732,6 +2975,7 @@ const mapSitePageRow = (row: SitePageRow) => ({
   key: row.key,
   slug: row.slug,
   title: row.title,
+  productKey: row.product_key,
   htmlContent: row.html_content,
   metaTitle: row.meta_title,
   metaKeywords: row.meta_keywords,
@@ -2748,7 +2992,7 @@ const listSitePages = async (db: D1Database, fullDetail: boolean) => {
   if (fullDetail) {
     const rows = await db
       .prepare(
-        `SELECT key, slug, title, html_content, meta_title, meta_keywords, meta_description, is_active, sort_order, created_at, updated_at
+        `SELECT key, slug, title, product_key, html_content, meta_title, meta_keywords, meta_description, is_active, sort_order, created_at, updated_at
         FROM site_pages
         ORDER BY sort_order ASC, title ASC`,
       )
@@ -2759,7 +3003,7 @@ const listSitePages = async (db: D1Database, fullDetail: boolean) => {
 
   const rows = await db
     .prepare(
-      `SELECT key, slug, title, meta_title, meta_keywords, meta_description, is_active, sort_order, created_at, updated_at
+      `SELECT key, slug, title, product_key, meta_title, meta_keywords, meta_description, is_active, sort_order, created_at, updated_at
       FROM site_pages
       WHERE is_active = 1
       ORDER BY sort_order ASC, title ASC`,
@@ -2768,6 +3012,7 @@ const listSitePages = async (db: D1Database, fullDetail: boolean) => {
       key: string;
       slug: string;
       title: string;
+      product_key: string;
       meta_title: string;
       meta_keywords: string;
       meta_description: string;
@@ -2781,6 +3026,7 @@ const listSitePages = async (db: D1Database, fullDetail: boolean) => {
     key: row.key,
     slug: row.slug,
     title: row.title,
+    productKey: row.product_key,
     htmlContent: '',
     metaTitle: row.meta_title,
     metaKeywords: row.meta_keywords,
@@ -2797,7 +3043,7 @@ const getSitePageByKeyOrSlug = async (db: D1Database, value: string, includeInac
 
   const row = await db
     .prepare(
-      `SELECT key, slug, title, html_content, meta_title, meta_keywords, meta_description, is_active, sort_order, created_at, updated_at
+      `SELECT key, slug, title, product_key, html_content, meta_title, meta_keywords, meta_description, is_active, sort_order, created_at, updated_at
       FROM site_pages
       WHERE key = ? OR slug = ?
       LIMIT 1`,
@@ -2841,18 +3087,20 @@ const createSitePage = async (db: D1Database, input: SitePageInput) => {
         key,
         slug,
         title,
+        product_key,
         html_content,
         meta_title,
         meta_keywords,
         meta_description,
         is_active,
         sort_order
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       key,
       slug,
       input.title.trim(),
+      input.productKey?.trim() ?? '',
       input.htmlContent ?? '',
       input.metaTitle?.trim() ?? '',
       input.metaKeywords?.trim() ?? '',
@@ -2895,6 +3143,7 @@ const updateSitePage = async (db: D1Database, existingKey: string, input: SitePa
       `UPDATE site_pages SET
         slug = ?,
         title = ?,
+        product_key = ?,
         html_content = ?,
         meta_title = ?,
         meta_keywords = ?,
@@ -2907,6 +3156,7 @@ const updateSitePage = async (db: D1Database, existingKey: string, input: SitePa
     .bind(
       slug,
       input.title.trim(),
+      input.productKey?.trim() ?? '',
       input.htmlContent ?? '',
       input.metaTitle?.trim() ?? '',
       input.metaKeywords?.trim() ?? '',
@@ -2928,23 +3178,9 @@ const deleteSitePage = async (db: D1Database, key: string) => {
   return result.meta.changes > 0;
 };
 
-const isCategoryPageSlugValid = async (db: D1Database, pageSlug: string | undefined | null) => {
-  const trimmed = typeof pageSlug === 'string' ? pageSlug.trim() : '';
-
-  if (!trimmed) {
-    return true;
-  }
-
-  await ensureSitePagesTable(db);
-
-  const row = await db.prepare('SELECT 1 AS ok FROM site_pages WHERE slug = ? LIMIT 1').bind(trimmed).first<{
-    ok: number;
-  }>();
-
-  return Boolean(row);
-};
-
 const getProduct = async (db: D1Database, key: string) => {
+  await ensureProductsHtmlContentColumn(db);
+
   const products = await db
     .prepare(
       `SELECT
@@ -2954,6 +3190,7 @@ const getProduct = async (db: D1Database, key: string) => {
         p.title,
         p.slug,
         p.description,
+        p.html_content,
         p.meta_title,
         p.meta_keywords,
         p.meta_description,
@@ -2989,6 +3226,8 @@ const getProduct = async (db: D1Database, key: string) => {
 };
 
 const createProduct = async (db: D1Database, product: ProductInput) => {
+  await ensureProductsHtmlContentColumn(db);
+
   const badges = product.badges ?? [];
   const children = product.children ?? [];
 
@@ -3001,6 +3240,7 @@ const createProduct = async (db: D1Database, product: ProductInput) => {
           title,
           slug,
           description,
+          html_content,
           meta_title,
           meta_keywords,
           meta_description,
@@ -3011,7 +3251,7 @@ const createProduct = async (db: D1Database, product: ProductInput) => {
           alt_text,
           sort_order,
           is_active
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         product.key,
@@ -3019,6 +3259,7 @@ const createProduct = async (db: D1Database, product: ProductInput) => {
         product.title,
         product.slug,
         product.description ?? '',
+        product.htmlContent ?? '',
         product.metaTitle ?? '',
         product.metaKeywords ?? '',
         product.metaDescription ?? '',
@@ -3046,6 +3287,8 @@ const createProduct = async (db: D1Database, product: ProductInput) => {
 };
 
 const updateProduct = async (db: D1Database, key: string, product: ProductInput) => {
+  await ensureProductsHtmlContentColumn(db);
+
   const badges = product.badges ?? [];
   const children = product.children ?? [];
 
@@ -3058,6 +3301,7 @@ const updateProduct = async (db: D1Database, key: string, product: ProductInput)
           title = ?,
           slug = ?,
           description = ?,
+          html_content = ?,
           meta_title = ?,
           meta_keywords = ?,
           meta_description = ?,
@@ -3076,6 +3320,7 @@ const updateProduct = async (db: D1Database, key: string, product: ProductInput)
         product.title,
         product.slug,
         product.description ?? '',
+        product.htmlContent ?? '',
         product.metaTitle ?? '',
         product.metaKeywords ?? '',
         product.metaDescription ?? '',
@@ -4002,6 +4247,98 @@ export default {
       }
     }
 
+    if (url.pathname === '/api/site-applications') {
+      if (request.method === 'GET') {
+        const includeInactive = url.searchParams.get('includeInactive') === '1';
+
+        if (includeInactive) {
+          const admin = await authenticateAdmin(request, env.DB);
+
+          if (!admin) {
+            return unauthorized();
+          }
+
+          if (!hasAdminModule(admin, 'settings')) {
+            return forbidden();
+          }
+        }
+
+        return json({
+          ok: true,
+          applications: await listSiteApplications(env.DB, includeInactive),
+        });
+      }
+
+      if (request.method === 'POST' || request.method === 'PUT') {
+        const admin = await authenticateAdmin(request, env.DB);
+
+        if (!admin) {
+          return unauthorized();
+        }
+
+        if (!hasAdminModule(admin, 'settings')) {
+          return forbidden();
+        }
+
+        const body = await getSiteApplicationRequestBody(request);
+
+        if (!isValidSiteApplicationInput(body)) {
+          return json({ ok: false, error: 'Invalid site application payload' }, { status: 400 });
+        }
+
+        const applications = await upsertSiteApplication(env.DB, body);
+
+        if (!applications) {
+          return json({ ok: false, error: 'Invalid application category key' }, { status: 400 });
+        }
+
+        return json({
+          ok: true,
+          applications,
+        });
+      }
+    }
+
+    if (url.pathname.startsWith('/api/site-applications/')) {
+      const admin = await authenticateAdmin(request, env.DB);
+
+      if (!admin) {
+        return unauthorized();
+      }
+
+      if (!hasAdminModule(admin, 'settings')) {
+        return forbidden();
+      }
+
+      const key = decodeURIComponent(url.pathname.replace('/api/site-applications/', ''));
+
+      if (request.method === 'PUT') {
+        const body = await getSiteApplicationRequestBody(request);
+
+        if (!isValidSiteApplicationInput(body)) {
+          return json({ ok: false, error: 'Invalid site application payload' }, { status: 400 });
+        }
+
+        const applications = await upsertSiteApplication(env.DB, body, key);
+
+        if (!applications) {
+          return json({ ok: false, error: 'Invalid application category key' }, { status: 400 });
+        }
+
+        return json({
+          ok: true,
+          applications,
+        });
+      }
+
+      if (request.method === 'DELETE') {
+        return json({
+          ok: true,
+          applications: await deleteSiteApplication(env.DB, key),
+        });
+      }
+    }
+
     if (url.pathname === '/api/quote-questions') {
       if (request.method === 'GET') {
         const includeInactive = url.searchParams.get('includeInactive') === '1';
@@ -4548,10 +4885,6 @@ export default {
         return json({ ok: false, error: 'Invalid category payload' }, { status: 400 });
       }
 
-      if (!(await isCategoryPageSlugValid(env.DB, body.pageSlug))) {
-        return json({ ok: false, error: 'invalid_page_slug' }, { status: 400 });
-      }
-
       return json(
         {
           ok: true,
@@ -4586,10 +4919,6 @@ export default {
 
         if (!isValidCategoryInput(body)) {
           return json({ ok: false, error: 'Invalid category payload' }, { status: 400 });
-        }
-
-        if (!(await isCategoryPageSlugValid(env.DB, body.pageSlug))) {
-          return json({ ok: false, error: 'invalid_page_slug' }, { status: 400 });
         }
 
         const category = await updateCategory(env.DB, categoryKey, body);

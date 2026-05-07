@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Component, lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 
 const PaperShaderBackgroundCanvas = lazy(() => import('./PaperShaderBackgroundCanvas'));
 
@@ -47,12 +48,24 @@ function useStaticBackgroundMode() {
   return useSyncExternalStore(subscribeStaticBackgroundMode, getStaticBackgroundModeSnapshot, () => true);
 }
 
+const serverDprSnapshot: [number, number] = [1, 1];
+let dprSnapshotCache: [number, number] = [1, 1];
+
 function computeDprTuple(): [number, number] {
   const narrow = window.matchMedia('(max-width: 768px)').matches;
   const maxDpr = narrow ? 1 : 2;
   const device = Math.min(window.devicePixelRatio || 1, maxDpr);
 
   return [1, Math.max(1, device)];
+}
+
+function getDprSnapshot(): [number, number] {
+  const next = computeDprTuple();
+  if (dprSnapshotCache[0] === next[0] && dprSnapshotCache[1] === next[1]) {
+    return dprSnapshotCache;
+  }
+  dprSnapshotCache = next;
+  return dprSnapshotCache;
 }
 
 function subscribeDpr(onChange: () => void) {
@@ -67,7 +80,26 @@ function subscribeDpr(onChange: () => void) {
 }
 
 function useAdaptiveDpr(): [number, number] {
-  return useSyncExternalStore(subscribeDpr, computeDprTuple, () => [1, 1]);
+  return useSyncExternalStore(subscribeDpr, getDprSnapshot, () => serverDprSnapshot);
+}
+
+class PaperShaderCanvasErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.warn('[PaperShaderBackground] WebGL / sahne hatası; arka plan yalnızca CSS gradient ile devam ediyor.', error, info);
+  }
+
+  render() {
+    if (this.state.failed) {
+      return null;
+    }
+    return this.props.children;
+  }
 }
 
 export default function PaperShaderBackground() {
@@ -134,7 +166,9 @@ export default function PaperShaderBackground() {
     <div ref={containerRef} className="paperShaderBackground" aria-hidden="true">
       {mountCanvas ? (
         <Suspense fallback={null}>
-          <PaperShaderBackgroundCanvas dpr={dpr} />
+          <PaperShaderCanvasErrorBoundary>
+            <PaperShaderBackgroundCanvas dpr={dpr} />
+          </PaperShaderCanvasErrorBoundary>
         </Suspense>
       ) : null}
     </div>

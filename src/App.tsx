@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Database,
   ExternalLink,
   FileText,
@@ -59,6 +60,7 @@ type AdminProduct = {
   title: string;
   slug: string;
   description: string;
+  htmlContent: string;
   metaTitle: string;
   metaKeywords: string;
   metaDescription: string;
@@ -70,6 +72,7 @@ type AdminProduct = {
   badges: string[];
   children: { key: string; title: string; slug: string }[];
   sortOrder: number;
+  isActive: boolean;
 };
 
 type AdminCategory = {
@@ -77,6 +80,7 @@ type AdminCategory = {
   title: string;
   slug: string;
   description: string;
+  htmlContent: string;
   metaTitle: string;
   metaKeywords: string;
   metaDescription: string;
@@ -92,6 +96,7 @@ type SitePage = {
   key: string;
   slug: string;
   title: string;
+  productKey: string;
   htmlContent: string;
   metaTitle: string;
   metaKeywords: string;
@@ -157,6 +162,22 @@ type SiteService = {
   updatedAt?: string;
 };
 
+type SiteApplication = {
+  key: string;
+  productKey: string;
+  productTitle: string;
+  categoryKey: string;
+  categoryTitle: string;
+  title: string;
+  summary: string;
+  description: string;
+  imageUrl: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 type ReferenceFormState = {
   key: string;
   title: string;
@@ -180,12 +201,24 @@ type SiteServiceFormState = {
   isActive: boolean;
 };
 
+type SiteApplicationFormState = {
+  key: string;
+  productKey: string;
+  title: string;
+  summary: string;
+  description: string;
+  imageUrl: string;
+  sortOrder: string;
+  isActive: boolean;
+};
+
 type ProductFormState = {
   key: string;
   categoryKey: string;
   title: string;
   slug: string;
   description: string;
+  htmlContent: string;
   metaTitle: string;
   metaKeywords: string;
   metaDescription: string;
@@ -222,6 +255,7 @@ type CategoryFormState = {
   title: string;
   slug: string;
   description: string;
+  htmlContent: string;
   metaTitle: string;
   metaKeywords: string;
   metaDescription: string;
@@ -230,13 +264,13 @@ type CategoryFormState = {
   imageHorizontal: string;
   imageVertical: string;
   sortOrder: string;
-  pageSlug: string;
 };
 
 type SitePageFormState = {
   key: string;
   slug: string;
   title: string;
+  productKey: string;
   htmlContent: string;
   metaTitle: string;
   metaKeywords: string;
@@ -572,6 +606,7 @@ type AdminSection =
   | 'blog'
   | 'assets'
   | 'services'
+  | 'applications'
   | 'references'
   | 'sitePages'
   | 'quoteQuestions'
@@ -618,31 +653,31 @@ const socialPlatforms = [
     platform: 'instagram',
     label: 'Instagram',
     defaultUrl: 'https://www.instagram.com/',
-    iconUrl: 'https://cdn.simpleicons.org/instagram/ffffff',
+    iconUrl: 'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/instagram.svg',
   },
   {
     platform: 'facebook',
     label: 'Facebook',
     defaultUrl: 'https://www.facebook.com/',
-    iconUrl: 'https://cdn.simpleicons.org/facebook/ffffff',
+    iconUrl: 'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/facebook.svg',
   },
   {
     platform: 'linkedin',
     label: 'LinkedIn',
     defaultUrl: 'https://www.linkedin.com/',
-    iconUrl: 'https://cdn.simpleicons.org/linkedin/ffffff',
+    iconUrl: 'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/linkedin.svg',
   },
   {
     platform: 'youtube',
     label: 'YouTube',
     defaultUrl: 'https://www.youtube.com/',
-    iconUrl: 'https://cdn.simpleicons.org/youtube/ffffff',
+    iconUrl: 'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/youtube.svg',
   },
   {
     platform: 'tiktok',
     label: 'TikTok',
     defaultUrl: 'https://www.tiktok.com/',
-    iconUrl: 'https://cdn.simpleicons.org/tiktok/ffffff',
+    iconUrl: 'https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/tiktok.svg',
   },
 ];
 
@@ -749,6 +784,17 @@ const emptySiteServiceForm: SiteServiceFormState = {
   isActive: true,
 };
 
+const emptySiteApplicationForm: SiteApplicationFormState = {
+  key: `app_${crypto.randomUUID()}`,
+  productKey: '',
+  title: '',
+  summary: '',
+  description: '',
+  imageUrl: '',
+  sortOrder: '0',
+  isActive: true,
+};
+
 const emptyQuoteContactForm: QuoteContactFormState = {
   fullName: '',
   phone: '',
@@ -761,6 +807,7 @@ const createEmptyProductForm = (categoryKey = ''): ProductFormState => ({
   title: '',
   slug: '',
   description: '',
+  htmlContent: '',
   metaTitle: '',
   metaKeywords: '',
   metaDescription: '',
@@ -797,6 +844,7 @@ const emptyCategoryForm: CategoryFormState = {
   title: '',
   slug: '',
   description: '',
+  htmlContent: '',
   metaTitle: '',
   metaKeywords: '',
   metaDescription: '',
@@ -805,13 +853,13 @@ const emptyCategoryForm: CategoryFormState = {
   imageHorizontal: '',
   imageVertical: '',
   sortOrder: '0',
-  pageSlug: '',
 };
 
 const emptySitePageForm: SitePageFormState = {
   key: '',
   slug: '',
   title: '',
+  productKey: '',
   htmlContent: '',
   metaTitle: '',
   metaKeywords: '',
@@ -823,6 +871,18 @@ const emptySitePageForm: SitePageFormState = {
 const parseSortOrder = (value: string) => {
   const parsedValue = Number.parseInt(value, 10);
   return Number.isFinite(parsedValue) ? parsedValue : 0;
+};
+
+const getNextSortOrderString = (values: Array<number | null | undefined>) => {
+  let maxSortOrder = 0;
+  values.forEach((currentValue) => {
+    if (typeof currentValue !== 'number' || Number.isNaN(currentValue)) {
+      return;
+    }
+    maxSortOrder = Math.max(maxSortOrder, currentValue);
+  });
+
+  return String(maxSortOrder + 1);
 };
 
 const getQuoteNumberDecimalPlaces = (question: QuoteQuestion) =>
@@ -1009,7 +1069,17 @@ const apiUrl = (path: string) => {
     return path;
   }
 
-  return window.location.hostname === 'hhsotomatikkapi.com' ? path : `https://hhsotomatikkapi.com${path}`;
+  const host = window.location.hostname;
+
+  if (host === 'hhsotomatikkapi.com') {
+    return path;
+  }
+
+  if (import.meta.env.DEV && (host === 'localhost' || host === '127.0.0.1')) {
+    return path;
+  }
+
+  return `https://hhsotomatikkapi.com${path}`;
 };
 
 const createPhoneHref = (phone: string) => {
@@ -1139,16 +1209,19 @@ const createProductImageVariants = async (file: File, focalPoints: CropFocalPoin
 };
 
 function App() {
-  const isPanelPage = window.location.pathname.toLowerCase() === '/panel';
-  const isBlogIndexPage = window.location.pathname.toLowerCase() === '/blog';
-  const isServicesPage = window.location.pathname.toLowerCase() === '/hizmetler';
-  const blogSlug = window.location.pathname.match(/^\/blog\/([^/]+)$/)?.[1] ?? '';
-  const solutionPageSlug = window.location.pathname.match(/^\/cozum\/([^/]+)$/i)?.[1] ?? '';
+  const pathnameRaw = window.location.pathname;
+  const pathnameNorm = (pathnameRaw.replace(/\/$/, '') || '/').toLowerCase();
+  const isPanelPage = pathnameNorm === '/panel';
+  const isBlogIndexPage = pathnameNorm === '/blog';
+  const isServicesPage = pathnameNorm === '/hizmetler';
+  const blogSlug = pathnameRaw.match(/^\/blog\/([^/]+)\/?$/i)?.[1] ?? '';
+  const solutionPageSlug = pathnameRaw.match(/^\/cozum\/([^/]+)\/?$/i)?.[1] ?? '';
   const [language, setLanguage] = useState('TR');
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [isServiceRequestModalOpen, setIsServiceRequestModalOpen] = useState(false);
   const [isServiceTypeMenuOpen, setIsServiceTypeMenuOpen] = useState(false);
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
+  const [isHeaderProductsMenuOpen, setIsHeaderProductsMenuOpen] = useState(false);
   const [isContactMenuOpen, setIsContactMenuOpen] = useState(false);
   const [activeLatestBlogIndex, setActiveLatestBlogIndex] = useState(0);
   const [selectedQuoteCategoryKey, setSelectedQuoteCategoryKey] = useState('');
@@ -1156,15 +1229,17 @@ function App() {
   const [hoveredCategoryGalleryIndex, setHoveredCategoryGalleryIndex] = useState<number | null>(null);
   const [selectedCategoryGalleryIndex, setSelectedCategoryGalleryIndex] = useState<number | null>(null);
   const [selectedSiteService, setSelectedSiteService] = useState<SiteService | null>(null);
+  const [selectedSolutionApplication, setSelectedSolutionApplication] = useState<SiteApplication | null>(null);
   const [hasQuoteButtonEntered, setHasQuoteButtonEntered] = useState(false);
   const [adminSection, setAdminSection] = useState<AdminSection>('products');
   const [adminProducts, setAdminProducts] = useState<AdminProduct[]>([]);
   const [adminCategories, setAdminCategories] = useState<AdminCategory[]>([]);
   const [adminProductCategoryFilter, setAdminProductCategoryFilter] = useState('');
+  const [sitePageProductFilter, setSitePageProductFilter] = useState('');
+  const [siteApplicationProductFilter, setSiteApplicationProductFilter] = useState('');
   const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
   const [selectedBlogPost, setSelectedBlogPost] = useState<BlogPost | null>(null);
   const [sitePages, setSitePages] = useState<SitePage[]>([]);
-  const [selectedSitePage, setSelectedSitePage] = useState<SitePage | null>(null);
   const [currentBlogPage, setCurrentBlogPage] = useState(1);
   const [isLoadingMoreBlogPosts, setIsLoadingMoreBlogPosts] = useState(false);
   const [hasMoreBlogPosts, setHasMoreBlogPosts] = useState(false);
@@ -1173,6 +1248,7 @@ function App() {
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>([]);
   const [siteReferences, setSiteReferences] = useState<SiteReference[]>([]);
   const [siteServices, setSiteServices] = useState<SiteService[]>([]);
+  const [siteApplications, setSiteApplications] = useState<SiteApplication[]>([]);
   const [quoteQuestions, setQuoteQuestions] = useState<QuoteQuestion[]>([]);
   const [quoteRequests, setQuoteRequests] = useState<QuoteRequest[]>([]);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
@@ -1195,6 +1271,7 @@ function App() {
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isReferenceModalOpen, setIsReferenceModalOpen] = useState(false);
   const [isSiteServiceModalOpen, setIsSiteServiceModalOpen] = useState(false);
+  const [isSiteApplicationModalOpen, setIsSiteApplicationModalOpen] = useState(false);
   const [isSitePageModalOpen, setIsSitePageModalOpen] = useState(false);
   const [isQuoteQuestionModalOpen, setIsQuoteQuestionModalOpen] = useState(false);
   const [isSavingSocialLinks, setIsSavingSocialLinks] = useState(false);
@@ -1217,6 +1294,7 @@ function App() {
   const [isUploadingQuoteQuestionImage, setIsUploadingQuoteQuestionImage] = useState(false);
   const [isUploadingReferenceImage, setIsUploadingReferenceImage] = useState(false);
   const [isUploadingSiteServiceImage, setIsUploadingSiteServiceImage] = useState(false);
+  const [isUploadingSiteApplicationImage, setIsUploadingSiteApplicationImage] = useState(false);
   const [isUploadingSiteServiceIcon, setIsUploadingSiteServiceIcon] = useState(false);
   const [isUploadingUserAvatar, setIsUploadingUserAvatar] = useState(false);
   const [isConfirmingProductDelete, setIsConfirmingProductDelete] = useState(false);
@@ -1224,7 +1302,11 @@ function App() {
   const [isConfirmingBlogDelete, setIsConfirmingBlogDelete] = useState(false);
   const [isConfirmingReferenceDelete, setIsConfirmingReferenceDelete] = useState(false);
   const [isConfirmingSiteServiceDelete, setIsConfirmingSiteServiceDelete] = useState(false);
+  const [isConfirmingSiteApplicationDelete, setIsConfirmingSiteApplicationDelete] = useState(false);
   const [isConfirmingSitePageDelete, setIsConfirmingSitePageDelete] = useState(false);
+  const [sitePageEditorMode, setSitePageEditorMode] = useState<'normal' | 'html'>('normal');
+  const [isSitePageEditorFullscreen, setIsSitePageEditorFullscreen] = useState(false);
+  const [isUploadingSitePageInlineImage, setIsUploadingSitePageInlineImage] = useState(false);
   const [confirmingAssetDeleteKey, setConfirmingAssetDeleteKey] = useState('');
   const [confirmingQuoteRequestDeleteId, setConfirmingQuoteRequestDeleteId] = useState('');
   const [confirmingServiceRequestDeleteId, setConfirmingServiceRequestDeleteId] = useState('');
@@ -1251,6 +1333,7 @@ function App() {
   const [copyingQuoteQuestionId, setCopyingQuoteQuestionId] = useState<string | null>(null);
   const [editingReferenceKey, setEditingReferenceKey] = useState<string | null>(null);
   const [editingSiteServiceKey, setEditingSiteServiceKey] = useState<string | null>(null);
+  const [editingSiteApplicationKey, setEditingSiteApplicationKey] = useState<string | null>(null);
   const [editingSitePageKey, setEditingSitePageKey] = useState<string | null>(null);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [productForm, setProductForm] = useState<ProductFormState>(createEmptyProductForm());
@@ -1258,6 +1341,7 @@ function App() {
   const [categoryForm, setCategoryForm] = useState<CategoryFormState>(emptyCategoryForm);
   const [referenceForm, setReferenceForm] = useState<ReferenceFormState>(emptyReferenceForm);
   const [siteServiceForm, setSiteServiceForm] = useState<SiteServiceFormState>(emptySiteServiceForm);
+  const [siteApplicationForm, setSiteApplicationForm] = useState<SiteApplicationFormState>(emptySiteApplicationForm);
   const [sitePageForm, setSitePageForm] = useState<SitePageFormState>(emptySitePageForm);
   const [adminUserForm, setAdminUserForm] = useState<AdminUserFormState>(emptyAdminUserForm);
   const [adminMessage, setAdminMessage] = useState('');
@@ -1275,9 +1359,14 @@ function App() {
   const quoteQuestionImageInputRef = useRef<HTMLInputElement>(null);
   const referenceImageInputRef = useRef<HTMLInputElement>(null);
   const siteServiceImageInputRef = useRef<HTMLInputElement>(null);
+  const siteApplicationImageInputRef = useRef<HTMLInputElement>(null);
   const siteServiceIconInputRef = useRef<HTMLInputElement>(null);
   const siteServiceFormRef = useRef<HTMLFormElement>(null);
+  const siteApplicationFormRef = useRef<HTMLFormElement>(null);
   const sitePageFormRef = useRef<HTMLFormElement>(null);
+  const sitePageVisualEditorRef = useRef<HTMLDivElement>(null);
+  const sitePageHtmlEditorRef = useRef<HTMLTextAreaElement>(null);
+  const sitePageEditorImageInputRef = useRef<HTMLInputElement>(null);
   const cropPointRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const cropPreviewImageRefs = useRef<(HTMLImageElement | null)[]>([]);
   const userAvatarInputRef = useRef<HTMLInputElement>(null);
@@ -1344,6 +1433,7 @@ function App() {
 
     if (
       section === 'services' ||
+      section === 'applications' ||
       section === 'references' ||
       section === 'sitePages' ||
       section === 'quoteQuestions' ||
@@ -1370,10 +1460,10 @@ function App() {
           ? 'quoteQuestions'
           : canAccessAdminSection('services')
             ? 'services'
+            : canAccessAdminSection('applications')
+              ? 'applications'
             : canAccessAdminSection('references')
               ? 'references'
-              : canAccessAdminSection('sitePages')
-                ? 'sitePages'
               : canAccessAdminSection('quoteRequests')
                 ? 'quoteRequests'
                 : canAccessAdminSection('serviceRequests')
@@ -1387,12 +1477,23 @@ function App() {
   const emailHref = createMailHref(contactSettings.email);
 
   useEffect(() => {
-    const undoHead = applyInjectedHeadHtml(contactSettings.headHtml);
-    const undoBody = applyInjectedBodyHtml(contactSettings.bodyHtml);
+    let undoHead: () => void = () => {};
+    let undoBody: () => void = () => {};
+
+    try {
+      undoHead = applyInjectedHeadHtml(contactSettings.headHtml);
+      undoBody = applyInjectedBodyHtml(contactSettings.bodyHtml);
+    } catch (error) {
+      console.warn('[İletişim ayarları] Head/body snippet uygulanamadı.', error);
+    }
 
     return () => {
-      undoHead();
-      undoBody();
+      try {
+        undoHead();
+        undoBody();
+      } catch {
+        /* cleanup sırasında hata yok say */
+      }
     };
   }, [contactSettings.headHtml, contactSettings.bodyHtml]);
   const selectedServiceRequestType =
@@ -1404,7 +1505,7 @@ function App() {
 
       return {
         title: category.title,
-        pageSlug: category.pageSlug?.trim() ?? '',
+        slug: category.slug.trim(),
         url:
           category.imageHorizontal ||
           category.image ||
@@ -1417,7 +1518,68 @@ function App() {
           '',
       };
     })
-    .filter((item): item is { title: string; url: string; pageSlug: string } => Boolean(item.url));
+    .filter((item): item is { title: string; url: string; slug: string } => Boolean(item.url));
+  const solutionSlugNormalized = solutionPageSlug.trim().toLowerCase();
+  const selectedSolutionProduct = solutionPageSlug
+    ? adminProducts.find(
+        (product) => product.slug.trim().toLowerCase() === solutionPageSlug.trim().toLowerCase() && product.isActive,
+      ) ?? null
+    : null;
+  const selectedSolutionCategory = selectedSolutionProduct
+    ? null
+    : solutionPageSlug
+      ? adminCategories.find((category) => category.slug.trim().toLowerCase() === solutionSlugNormalized) ?? null
+      : null;
+  const selectedSolutionProductKeyNormalized = selectedSolutionProduct?.key?.trim().toLowerCase() ?? '';
+  const selectedSolutionCategoryKeyNormalized =
+    selectedSolutionProduct?.categoryKey?.trim().toLowerCase() ??
+    selectedSolutionCategory?.key?.trim().toLowerCase() ??
+    '';
+  const solutionCategoryKeys = solutionSlugNormalized
+    ? adminCategories
+        .filter((category) => {
+          const categorySlug = category.slug.trim().toLowerCase();
+          return categorySlug === solutionSlugNormalized;
+        })
+        .map((category) => category.key.trim().toLowerCase())
+    : [];
+  const selectedSolutionTitle = selectedSolutionProduct?.title ?? selectedSolutionCategory?.title ?? '';
+  const selectedSolutionHtmlContent = selectedSolutionProduct?.htmlContent ?? selectedSolutionCategory?.htmlContent ?? '';
+  const selectedSolutionMetaTitle = selectedSolutionProduct?.metaTitle ?? selectedSolutionCategory?.metaTitle ?? '';
+  const selectedSolutionMetaKeywords = selectedSolutionProduct?.metaKeywords ?? selectedSolutionCategory?.metaKeywords ?? '';
+  const selectedSolutionMetaDescription = selectedSolutionProduct?.metaDescription ?? selectedSolutionCategory?.metaDescription ?? '';
+  const activeSolutionApplications = siteApplications.filter((application) => {
+    if (!application.isActive) {
+      return false;
+    }
+
+    const productKey = application.productKey.trim().toLowerCase();
+    const categoryKey = application.categoryKey.trim().toLowerCase();
+
+    return (
+      (selectedSolutionProductKeyNormalized && productKey === selectedSolutionProductKeyNormalized) ||
+      (selectedSolutionCategoryKeyNormalized && categoryKey === selectedSolutionCategoryKeyNormalized) ||
+      solutionCategoryKeys.includes(categoryKey) ||
+      (solutionSlugNormalized && categoryKey === solutionSlugNormalized)
+    );
+  });
+  const solutionApplicationsWithImage = activeSolutionApplications.filter(
+    (application): application is SiteApplication & { imageUrl: string } => Boolean(application.imageUrl),
+  );
+  const headerProductGroups = adminCategories
+    .map((category) => ({
+      category,
+      products: adminProducts
+        .filter((product) => product.categoryKey === category.key)
+        .map((product) => ({
+          product,
+          href: `/cozum/${product.slug}`,
+        })),
+    }))
+    .filter((group) => group.products.length > 0);
+  const selectedSolutionApplicationIndex = selectedSolutionApplication
+    ? solutionApplicationsWithImage.findIndex((application) => application.key === selectedSolutionApplication.key)
+    : -1;
   const quoteCategories = adminCategories.map((category) => {
     const fallbackProduct = adminProducts.find((product) => product.categoryKey === category.key);
 
@@ -1473,6 +1635,12 @@ function App() {
   const visibleAdminProducts = adminProductCategoryFilter
     ? adminProducts.filter((product) => product.categoryKey === adminProductCategoryFilter)
     : adminProducts;
+  const visibleSitePages = sitePageProductFilter
+    ? sitePages.filter((page) => page.productKey === sitePageProductFilter)
+    : sitePages;
+  const visibleSiteApplications = siteApplicationProductFilter
+    ? siteApplications.filter((application) => application.productKey === siteApplicationProductFilter)
+    : siteApplications;
   const selectedVisibleAssetCount = visibleAssets.filter((asset) => selectedAssetKeys.has(asset.key)).length;
   const quoteAnswerSummary = activeQuoteQuestions
     .map((question) => {
@@ -1536,6 +1704,8 @@ function App() {
     adminCategories.find((category) => category.key === categoryKey)?.title ?? categoryKey;
   const getAdminProductTitle = (productKey?: string) =>
     adminProducts.find((product) => product.key === productKey)?.title ?? productKey ?? 'Genel';
+  const getCategoryProducts = (categoryKey: string) =>
+    adminProducts.filter((product) => product.categoryKey === categoryKey);
   const formatAdminDateTime = (value: string) => {
     if (!value) {
       return '-';
@@ -1565,8 +1735,8 @@ function App() {
   const openCategoryGalleryImage = (index: number) => {
     const entry = categoryGalleryImages[index];
 
-    if (entry?.pageSlug) {
-      window.location.href = `/cozum/${encodeURIComponent(entry.pageSlug)}`;
+    if (entry?.slug) {
+      window.location.href = `/cozum/${encodeURIComponent(entry.slug)}`;
       return;
     }
 
@@ -1591,6 +1761,48 @@ function App() {
         ? currentIndex
         : (currentIndex - 1 + categoryGalleryImages.length) % categoryGalleryImages.length,
     );
+  };
+
+  const goToNextSolutionApplication = () => {
+    if (solutionApplicationsWithImage.length <= 1) {
+      return;
+    }
+
+    setSelectedSolutionApplication((currentApplication) => {
+      if (!currentApplication) {
+        return currentApplication;
+      }
+
+      const currentIndex = solutionApplicationsWithImage.findIndex((application) => application.key === currentApplication.key);
+
+      if (currentIndex < 0) {
+        return solutionApplicationsWithImage[0];
+      }
+
+      return solutionApplicationsWithImage[(currentIndex + 1) % solutionApplicationsWithImage.length];
+    });
+  };
+
+  const goToPreviousSolutionApplication = () => {
+    if (solutionApplicationsWithImage.length <= 1) {
+      return;
+    }
+
+    setSelectedSolutionApplication((currentApplication) => {
+      if (!currentApplication) {
+        return currentApplication;
+      }
+
+      const currentIndex = solutionApplicationsWithImage.findIndex((application) => application.key === currentApplication.key);
+
+      if (currentIndex < 0) {
+        return solutionApplicationsWithImage[0];
+      }
+
+      return solutionApplicationsWithImage[
+        (currentIndex - 1 + solutionApplicationsWithImage.length) % solutionApplicationsWithImage.length
+      ];
+    });
   };
 
   const getCategoryGalleryFlexValue = (index: number) => {
@@ -1686,6 +1898,33 @@ function App() {
   }, [latestBlogPosts.length]);
 
   useEffect(() => {
+    if (!selectedSolutionApplication) {
+      return;
+    }
+
+    const handleSolutionLightboxNavigation = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        goToNextSolutionApplication();
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        goToPreviousSolutionApplication();
+      }
+    };
+
+    window.addEventListener('keydown', handleSolutionLightboxNavigation);
+    return () => {
+      window.removeEventListener('keydown', handleSolutionLightboxNavigation);
+    };
+  }, [goToNextSolutionApplication, goToPreviousSolutionApplication, selectedSolutionApplication]);
+
+  useEffect(() => {
+    if (!isHeaderMenuOpen) {
+      setIsHeaderProductsMenuOpen(false);
+    }
+  }, [isHeaderMenuOpen]);
+
+  useEffect(() => {
     if (!isPanelPage) {
       return;
     }
@@ -1745,6 +1984,7 @@ function App() {
           blogCategoriesResult,
           blogTagsResult,
           sitePagesResult,
+          siteApplicationsResult,
         ] =
           await Promise.all([
             readApiJson<{ products?: AdminProduct[] }>(fetch(apiUrl('/api/products'))),
@@ -1793,6 +2033,11 @@ function App() {
                 ? authorizedFetch('/api/site-pages')
                 : fetch(apiUrl('/api/site-pages')),
             ),
+            readApiJson<{ applications?: SiteApplication[] }>(
+              isPanelPage && adminUser?.modules.includes('settings')
+                ? authorizedFetch('/api/site-applications?includeInactive=1')
+                : fetch(apiUrl('/api/site-applications')),
+            ),
           ]);
         const productsData = productsResult.data ?? {};
         const categoriesData = categoriesResult.data ?? {};
@@ -1808,6 +2053,7 @@ function App() {
         const blogCategoriesData = blogCategoriesResult.data ?? {};
         const blogTagsData = blogTagsResult.data ?? {};
         const sitePagesData = sitePagesResult.data ?? {};
+        const siteApplicationsData = siteApplicationsResult.data ?? {};
 
         if (productsData.products) {
           setAdminProducts(productsData.products);
@@ -1876,20 +2122,16 @@ function App() {
           setSitePages(sitePagesData.pages);
         }
 
+        if (siteApplicationsData.applications) {
+          setSiteApplications(siteApplicationsData.applications);
+        }
+
         if (blogSlug) {
           const blogPostResponse = await fetch(apiUrl(`/api/blog-posts/${encodeURIComponent(blogSlug)}`));
           const blogPostData = (await blogPostResponse.json().catch(() => null)) as { post?: BlogPost } | null;
           setSelectedBlogPost(blogPostData?.post ?? null);
         } else {
           setSelectedBlogPost(null);
-        }
-
-        if (solutionPageSlug) {
-          const sitePageResponse = await fetch(apiUrl(`/api/site-pages/${encodeURIComponent(solutionPageSlug)}`));
-          const sitePageData = (await sitePageResponse.json().catch(() => null)) as { page?: SitePage } | null;
-          setSelectedSitePage(sitePageData?.page ?? null);
-        } else {
-          setSelectedSitePage(null);
         }
 
         if (isPanelPage && adminUser?.modules.includes('users')) {
@@ -1924,14 +2166,14 @@ function App() {
   }, [adminToken, authStatus, adminUser, authorizedFetch, blogSlug, solutionPageSlug, isBlogIndexPage, isPanelPage]);
 
   useEffect(() => {
-    if (!solutionPageSlug || !selectedSitePage) {
+    if (!solutionPageSlug || (!selectedSolutionProduct && !selectedSolutionCategory)) {
       return;
     }
 
-    const metaTitle = selectedSitePage.metaTitle.trim() || selectedSitePage.title;
+    const metaTitle = selectedSolutionMetaTitle.trim() || selectedSolutionTitle;
     document.title = metaTitle.toLowerCase().includes('hhs') ? metaTitle : `${metaTitle} | HHS Otomatik Kapı`;
 
-    const description = selectedSitePage.metaDescription.trim();
+    const description = selectedSolutionMetaDescription.trim();
 
     if (description) {
       let descriptionTag = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
@@ -1945,7 +2187,7 @@ function App() {
       descriptionTag.setAttribute('content', description);
     }
 
-    const keywords = selectedSitePage.metaKeywords.trim();
+    const keywords = selectedSolutionMetaKeywords.trim();
 
     if (keywords) {
       let keywordsTag = document.querySelector('meta[name="keywords"]') as HTMLMetaElement | null;
@@ -1958,7 +2200,15 @@ function App() {
 
       keywordsTag.setAttribute('content', keywords);
     }
-  }, [solutionPageSlug, selectedSitePage]);
+  }, [
+    solutionPageSlug,
+    selectedSolutionCategory,
+    selectedSolutionMetaDescription,
+    selectedSolutionMetaKeywords,
+    selectedSolutionMetaTitle,
+    selectedSolutionProduct,
+    selectedSolutionTitle,
+  ]);
 
   useEffect(() => {
     const closeModalWithEscape = (event: KeyboardEvent) => {
@@ -1983,6 +2233,11 @@ function App() {
         return;
       }
 
+      if (selectedSolutionApplication) {
+        setSelectedSolutionApplication(null);
+        return;
+      }
+
       if (imagePreview) {
         setImagePreview(null);
         return;
@@ -1995,6 +2250,11 @@ function App() {
 
       if (isContactMenuOpen) {
         setIsContactMenuOpen(false);
+        return;
+      }
+
+      if (isHeaderProductsMenuOpen) {
+        setIsHeaderProductsMenuOpen(false);
         return;
       }
 
@@ -2034,6 +2294,18 @@ function App() {
       if (isSiteServiceModalOpen) {
         setIsSiteServiceModalOpen(false);
         setEditingSiteServiceKey(null);
+        return;
+      }
+
+      if (isSiteApplicationModalOpen) {
+        setIsSiteApplicationModalOpen(false);
+        setEditingSiteApplicationKey(null);
+        setIsConfirmingSiteApplicationDelete(false);
+        return;
+      }
+
+      if (isSitePageEditorFullscreen) {
+        setIsSitePageEditorFullscreen(false);
         return;
       }
 
@@ -2088,6 +2360,7 @@ function App() {
   }, [
     isCategoryModalOpen,
     isContactMenuOpen,
+    isHeaderProductsMenuOpen,
     isHeaderMenuOpen,
     isServiceTypeMenuOpen,
     imagePreview,
@@ -2097,6 +2370,8 @@ function App() {
     isQuoteQuestionModalOpen,
     isReferenceModalOpen,
     isSiteServiceModalOpen,
+    isSiteApplicationModalOpen,
+    isSitePageEditorFullscreen,
     isSitePageModalOpen,
     pendingImageCrop,
     isQuoteModalOpen,
@@ -2107,12 +2382,15 @@ function App() {
     selectedDatabaseTable,
     selectedCategoryGalleryIndex,
     selectedSiteService,
+    selectedSolutionApplication,
+    editingSiteApplicationKey,
   ]);
 
   const isAnyModalOpen = Boolean(
     pendingImageCrop ||
       selectedCategoryGalleryIndex !== null ||
       selectedSiteService ||
+      selectedSolutionApplication ||
       imagePreview ||
       isAssetManagerOpen ||
       selectedDatabaseTable ||
@@ -2120,6 +2398,7 @@ function App() {
       isUserModalOpen ||
       isQuoteQuestionModalOpen ||
       isSiteServiceModalOpen ||
+      isSiteApplicationModalOpen ||
       isSitePageModalOpen ||
       isReferenceModalOpen ||
       isCategoryModalOpen ||
@@ -2344,7 +2623,10 @@ function App() {
 
   const openNewProductModal = () => {
     setEditingProductKey(null);
-    setProductForm(createEmptyProductForm());
+    setProductForm({
+      ...createEmptyProductForm(),
+      sortOrder: getNextSortOrderString(adminProducts.map((product) => product.sortOrder)),
+    });
     setIsConfirmingProductDelete(false);
     setIsProductModalOpen(true);
     setAdminMessage('');
@@ -2360,6 +2642,7 @@ function App() {
       title: product.title,
       slug: product.slug,
       description: product.description,
+      htmlContent: product.htmlContent ?? '',
       metaTitle: product.metaTitle,
       metaKeywords: product.metaKeywords,
       metaDescription: product.metaDescription,
@@ -2388,6 +2671,7 @@ function App() {
       title: copiedTitle,
       slug: copiedSlug,
       description: product.description,
+      htmlContent: product.htmlContent ?? '',
       metaTitle: product.metaTitle,
       metaKeywords: product.metaKeywords,
       metaDescription: product.metaDescription,
@@ -2623,7 +2907,11 @@ function App() {
 
   const openNewReferenceModal = () => {
     setEditingReferenceKey(null);
-    setReferenceForm({ ...emptyReferenceForm, key: `ref_${crypto.randomUUID()}` });
+    setReferenceForm({
+      ...emptyReferenceForm,
+      key: `ref_${crypto.randomUUID()}`,
+      sortOrder: getNextSortOrderString(siteReferences.map((reference) => reference.sortOrder)),
+    });
     setIsConfirmingReferenceDelete(false);
     setIsReferenceModalOpen(true);
     setAdminMessage('');
@@ -2667,7 +2955,11 @@ function App() {
 
   const openNewSiteServiceModal = () => {
     setEditingSiteServiceKey(null);
-    setSiteServiceForm({ ...emptySiteServiceForm, key: `srv_${crypto.randomUUID()}` });
+    setSiteServiceForm({
+      ...emptySiteServiceForm,
+      key: `srv_${crypto.randomUUID()}`,
+      sortOrder: getNextSortOrderString(siteServices.map((service) => service.sortOrder)),
+    });
     setIsConfirmingSiteServiceDelete(false);
     setIsSiteServiceModalOpen(true);
     setAdminMessage('');
@@ -2699,9 +2991,87 @@ function App() {
     setIsConfirmingSiteServiceDelete(false);
   };
 
+  const openNewSiteApplicationModal = () => {
+    setEditingSiteApplicationKey(null);
+    setSiteApplicationForm({
+      ...emptySiteApplicationForm,
+      key: `app_${crypto.randomUUID()}`,
+      productKey: adminProducts[0]?.key ?? '',
+      sortOrder: getNextSortOrderString(siteApplications.map((application) => application.sortOrder)),
+    });
+    setIsConfirmingSiteApplicationDelete(false);
+    setIsSiteApplicationModalOpen(true);
+    setAdminMessage('');
+  };
+
+  const openEditSiteApplicationModal = (application: SiteApplication) => {
+    setEditingSiteApplicationKey(application.key);
+    setSiteApplicationForm({
+      key: application.key,
+      productKey: application.productKey,
+      title: application.title,
+      summary: application.summary,
+      description: application.description,
+      imageUrl: application.imageUrl,
+      sortOrder: String(application.sortOrder ?? 0),
+      isActive: application.isActive,
+    });
+    setIsConfirmingSiteApplicationDelete(false);
+    setIsSiteApplicationModalOpen(true);
+    setAdminMessage('');
+  };
+
+  const openCopySiteApplicationModal = (application: SiteApplication) => {
+    const copiedTitle = `${application.title} Kopya`;
+    const copiedKey = createUniqueValue(application.key, siteApplications.map((item) => item.key));
+
+    setEditingSiteApplicationKey(null);
+    setSiteApplicationForm({
+      key: copiedKey,
+      productKey: application.productKey,
+      title: copiedTitle,
+      summary: application.summary,
+      description: application.description,
+      imageUrl: application.imageUrl,
+      sortOrder: String((application.sortOrder ?? 0) + 1),
+      isActive: application.isActive,
+    });
+    setIsConfirmingSiteApplicationDelete(false);
+    setIsSiteApplicationModalOpen(true);
+    setAdminMessage('Uygulama kaydı kopyalandı. Kaydetmeden önce alanları kontrol edin.');
+  };
+
+  const closeSiteApplicationModal = () => {
+    setIsSiteApplicationModalOpen(false);
+    setEditingSiteApplicationKey(null);
+    setIsConfirmingSiteApplicationDelete(false);
+  };
+
+  const updateSiteApplicationForm = (field: keyof SiteApplicationFormState, value: string | boolean) => {
+    setSiteApplicationForm((currentForm) => ({
+      ...currentForm,
+      [field]: value,
+    }));
+  };
+
+  const updateSiteApplicationTitle = (title: string) => {
+    setSiteApplicationForm((currentForm) => ({
+      ...currentForm,
+      title,
+      key: editingSiteApplicationKey ? currentForm.key : createProductKeyFromTitle(title),
+    }));
+  };
+
   const openNewSitePageModal = () => {
     setEditingSitePageKey(null);
-    setSitePageForm({ ...emptySitePageForm, key: `sayfa_${crypto.randomUUID()}` });
+    setSitePageForm({
+      ...emptySitePageForm,
+      key: `sayfa_${crypto.randomUUID()}`,
+      productKey: adminProducts[0]?.key ?? '',
+      sortOrder: getNextSortOrderString(sitePages.map((page) => page.sortOrder)),
+    });
+    setSitePageEditorMode('normal');
+    setIsSitePageEditorFullscreen(false);
     setIsConfirmingSitePageDelete(false);
     setIsSitePageModalOpen(true);
     setAdminMessage('');
@@ -2713,6 +3083,7 @@ function App() {
       key: page.key,
       slug: page.slug,
       title: page.title,
+      productKey: page.productKey ?? '',
       htmlContent: page.htmlContent ?? '',
       metaTitle: page.metaTitle,
       metaKeywords: page.metaKeywords,
@@ -2720,6 +3091,8 @@ function App() {
       sortOrder: String(page.sortOrder ?? 0),
       isActive: page.isActive,
     });
+    setSitePageEditorMode('normal');
+    setIsSitePageEditorFullscreen(false);
     setIsConfirmingSitePageDelete(false);
     setIsSitePageModalOpen(true);
     setAdminMessage('');
@@ -2729,6 +3102,7 @@ function App() {
     setIsSitePageModalOpen(false);
     setEditingSitePageKey(null);
     setIsConfirmingSitePageDelete(false);
+    setIsSitePageEditorFullscreen(false);
   };
 
   const updateSitePageForm = (field: keyof SitePageFormState, value: string | boolean) => {
@@ -2746,6 +3120,124 @@ function App() {
       slug: editingSitePageKey ? currentForm.slug : createSlugFromTitle(title),
     }));
   };
+
+  const applySitePageEditorCommand = (command: string, value?: string) => {
+    if (sitePageEditorMode !== 'normal') {
+      return;
+    }
+
+    const visualEditor = sitePageVisualEditorRef.current;
+    if (!visualEditor) {
+      return;
+    }
+
+    visualEditor.focus();
+    document.execCommand(command, false, value);
+    updateSitePageForm('htmlContent', visualEditor.innerHTML);
+  };
+
+  const insertSitePageImageAtCursor = (imageUrl: string) => {
+    if (!imageUrl) {
+      return;
+    }
+
+    if (sitePageEditorMode === 'normal') {
+      const visualEditor = sitePageVisualEditorRef.current;
+      if (!visualEditor) {
+        return;
+      }
+
+      visualEditor.focus();
+      document.execCommand('insertImage', false, imageUrl);
+      updateSitePageForm('htmlContent', visualEditor.innerHTML);
+      return;
+    }
+
+    const htmlEditor = sitePageHtmlEditorRef.current;
+    const imageTag = `<img src="${imageUrl}" alt="" />`;
+
+    if (!htmlEditor) {
+      updateSitePageForm('htmlContent', `${sitePageForm.htmlContent}${imageTag}`);
+      return;
+    }
+
+    const start = htmlEditor.selectionStart ?? sitePageForm.htmlContent.length;
+    const end = htmlEditor.selectionEnd ?? start;
+    const nextValue = `${sitePageForm.htmlContent.slice(0, start)}${imageTag}${sitePageForm.htmlContent.slice(end)}`;
+    updateSitePageForm('htmlContent', nextValue);
+
+    // İmleci eklenen resim etiketinin sonuna alıyoruz.
+    queueMicrotask(() => {
+      const position = start + imageTag.length;
+      htmlEditor.focus();
+      htmlEditor.setSelectionRange(position, position);
+    });
+  };
+
+  const uploadSitePageInlineImage = async (file: File) => {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setAdminMessage('Lütfen geçerli bir görsel seçin.');
+      return;
+    }
+
+    setIsUploadingSitePageInlineImage(true);
+
+    try {
+      const optimizedImage = await optimizeProductImage(file);
+      const response = await authorizedFetch(
+        `/api/assets/page-image?variant=content&folder=sayfa&name=${encodeURIComponent(file.name)}`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'image/webp',
+          },
+          body: optimizedImage,
+        },
+      );
+      const data = (await response.json().catch(() => null)) as { ok?: boolean; url?: string } | null;
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (!response.ok || !data?.url) {
+        setAdminMessage('Görsel yüklenemedi. Lütfen tekrar deneyin.');
+        return;
+      }
+
+      insertSitePageImageAtCursor(data.url.startsWith('/api/') ? apiUrl(data.url) : data.url);
+      setAdminMessage('Görsel içerik alanına eklendi.');
+    } catch {
+      setAdminMessage('Görsel işlenemedi. Dosyayı kontrol edip tekrar deneyin.');
+    } finally {
+      setIsUploadingSitePageInlineImage(false);
+      if (sitePageEditorImageInputRef.current) {
+        sitePageEditorImageInputRef.current.value = '';
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!isSitePageModalOpen || sitePageEditorMode !== 'normal') {
+      return;
+    }
+
+    const visualEditor = sitePageVisualEditorRef.current;
+    if (!visualEditor) {
+      return;
+    }
+
+    const nextHtml = sitePageForm.htmlContent || '';
+    if (visualEditor.innerHTML !== nextHtml) {
+      visualEditor.innerHTML = nextHtml;
+    }
+  }, [isSitePageModalOpen, sitePageEditorMode, sitePageForm.key, sitePageForm.htmlContent]);
 
   const submitSitePageForm = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -2907,6 +3399,80 @@ function App() {
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   };
 
+  const submitSiteApplicationForm = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const form = siteApplicationFormRef.current;
+
+    if (!form) {
+      setAdminMessage('Uygulama formu bulunamadı. Modalı kapatıp tekrar açın.');
+      return;
+    }
+
+    if (typeof form.requestSubmit === 'function') {
+      form.requestSubmit();
+      return;
+    }
+
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  };
+
+  const uploadSiteApplicationImageFile = async (file: File) => {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setAdminMessage('Lütfen geçerli bir uygulama görseli seçin.');
+      return;
+    }
+
+    setIsUploadingSiteApplicationImage(true);
+
+    try {
+      const optimizedImage = await optimizeProductImage(file);
+      const response = await authorizedFetch(
+        `/api/assets/page-image?variant=application&folder=sayfa&name=${encodeURIComponent(file.name)}`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'image/webp',
+          },
+          body: optimizedImage,
+        },
+      );
+      const data = (await response.json().catch(() => null)) as { url?: string; size?: number } | null;
+
+      if (response.status === 401) {
+        setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+        await logoutAdmin();
+        return;
+      }
+
+      if (!response.ok || !data?.url) {
+        setAdminMessage('Uygulama görseli yüklenemedi.');
+        return;
+      }
+
+      updateSiteApplicationForm('imageUrl', data.url.startsWith('/api/') ? apiUrl(data.url) : data.url);
+      setAdminMessage(`Uygulama görseli yüklendi (${Math.round((data.size ?? optimizedImage.size) / 1024)} KB).`);
+    } catch {
+      setAdminMessage('Uygulama görseli optimize edilip yüklenemedi.');
+    } finally {
+      setIsUploadingSiteApplicationImage(false);
+    }
+  };
+
+  const uploadSiteApplicationImage = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (file) {
+      void uploadSiteApplicationImageFile(file);
+    }
+  };
+
   const uploadReferenceImageFile = async (file: File) => {
     if (!file) {
       return;
@@ -2961,7 +3527,10 @@ function App() {
 
   const openCategoryModal = () => {
     setEditingCategoryKey(null);
-    setCategoryForm(emptyCategoryForm);
+    setCategoryForm({
+      ...emptyCategoryForm,
+      sortOrder: getNextSortOrderString(adminCategories.map((category) => category.sortOrder)),
+    });
     setIsConfirmingCategoryDelete(false);
     setIsCategoryModalOpen(true);
     setAdminMessage('');
@@ -2983,6 +3552,7 @@ function App() {
       title: category.title,
       slug: category.slug,
       description: category.description,
+      htmlContent: category.htmlContent ?? '',
       metaTitle: category.metaTitle,
       metaKeywords: category.metaKeywords,
       metaDescription: category.metaDescription,
@@ -2991,7 +3561,6 @@ function App() {
       imageHorizontal: categoryImages.imageHorizontal,
       imageVertical: categoryImages.imageVertical,
       sortOrder: String(category.sortOrder ?? 0),
-      pageSlug: category.pageSlug?.trim() ?? '',
     });
   };
 
@@ -3330,7 +3899,7 @@ function App() {
   };
 
   const reloadAdminCatalog = async () => {
-    const [productsResult, categoriesResult, socialLinksResult, contactSettingsResult, siteServicesResult, referencesResult, quoteQuestionsResult, pushoverSettingsResult, blogPostsResult, blogCategoriesResult, blogTagsResult, sitePagesResult] =
+    const [productsResult, categoriesResult, socialLinksResult, contactSettingsResult, siteServicesResult, referencesResult, quoteQuestionsResult, pushoverSettingsResult, blogPostsResult, blogCategoriesResult, blogTagsResult, sitePagesResult, siteApplicationsResult] =
       await Promise.all([
         readApiJson<{ products?: AdminProduct[] }>(fetch(apiUrl('/api/products'))),
         readApiJson<{ categories?: AdminCategory[] }>(fetch(apiUrl('/api/product-categories'))),
@@ -3358,6 +3927,11 @@ function App() {
         readApiJson<{ pages?: SitePage[] }>(
           canAccessModule('settings') ? authorizedFetch('/api/site-pages') : fetch(apiUrl('/api/site-pages')),
         ),
+        readApiJson<{ applications?: SiteApplication[] }>(
+          canAccessModule('settings')
+            ? authorizedFetch('/api/site-applications?includeInactive=1')
+            : fetch(apiUrl('/api/site-applications')),
+        ),
       ]);
     const productsData = productsResult.data ?? {};
     const categoriesData = categoriesResult.data ?? {};
@@ -3371,6 +3945,7 @@ function App() {
     const blogCategoriesData = blogCategoriesResult.data ?? {};
     const blogTagsData = blogTagsResult.data ?? {};
     const sitePagesData = sitePagesResult.data ?? {};
+    const siteApplicationsData = siteApplicationsResult.data ?? {};
 
     if (productsData.products) {
       setAdminProducts(productsData.products);
@@ -3424,6 +3999,10 @@ function App() {
 
     if (sitePagesData.pages) {
       setSitePages(sitePagesData.pages);
+    }
+
+    if (siteApplicationsData.applications) {
+      setSiteApplications(siteApplicationsData.applications);
     }
   };
 
@@ -4543,6 +5122,7 @@ function App() {
       title: productForm.title.trim(),
       slug: productForm.slug.trim(),
       description: productForm.description.trim(),
+      htmlContent: productForm.htmlContent,
       metaTitle: productForm.metaTitle.trim(),
       metaKeywords: productForm.metaKeywords.trim(),
       metaDescription: productForm.metaDescription.trim(),
@@ -4658,6 +5238,7 @@ function App() {
       title: categoryForm.title.trim(),
       slug: categoryForm.slug.trim(),
       description: categoryForm.description.trim(),
+      htmlContent: categoryForm.htmlContent,
       metaTitle: categoryForm.metaTitle.trim(),
       metaKeywords: categoryForm.metaKeywords.trim(),
       metaDescription: categoryForm.metaDescription.trim(),
@@ -4666,7 +5247,6 @@ function App() {
       imageHorizontal: categoryForm.imageHorizontal.trim(),
       imageVertical: categoryForm.imageVertical.trim(),
       sortOrder: parseSortOrder(categoryForm.sortOrder),
-      pageSlug: categoryForm.pageSlug.trim(),
     };
 
     const response = await authorizedFetch(
@@ -4689,13 +5269,6 @@ function App() {
     }
 
     if (!response.ok) {
-      const errorData = (await response.json().catch(() => null)) as { error?: string } | null;
-
-      if (response.status === 400 && errorData?.error === 'invalid_page_slug') {
-        setAdminMessage('Seçilen çözüm sayfası bulunamadı. Önce Sayfalar bölümünde slug oluşturun veya alanı boş bırakın.');
-        return;
-      }
-
       setAdminMessage('Kategori kaydedilemedi. Lütfen alanları kontrol edin.');
       return;
     }
@@ -4889,6 +5462,82 @@ function App() {
     closeSiteServiceModal();
   };
 
+  const saveSiteApplication = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const payload = {
+      key: siteApplicationForm.key.trim(),
+      productKey: siteApplicationForm.productKey.trim(),
+      title: siteApplicationForm.title.trim(),
+      summary: siteApplicationForm.summary.trim(),
+      description: siteApplicationForm.description.trim(),
+      imageUrl: siteApplicationForm.imageUrl.trim(),
+      sortOrder: parseSortOrder(siteApplicationForm.sortOrder),
+      isActive: siteApplicationForm.isActive,
+    };
+
+    const response = await authorizedFetch(
+      editingSiteApplicationKey
+        ? `/api/site-applications/${encodeURIComponent(editingSiteApplicationKey)}`
+        : '/api/site-applications',
+      {
+        method: editingSiteApplicationKey ? 'PUT' : 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+    const data = (await response.json().catch(() => null)) as { applications?: SiteApplication[] } | null;
+
+    if (response.status === 401) {
+      setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+      await logoutAdmin();
+      return;
+    }
+
+    if (!response.ok || !data?.applications) {
+      setAdminMessage('Uygulama kaydedilemedi. Kategori, başlık, özet, açıklama ve görsel alanlarını kontrol edin.');
+      return;
+    }
+
+    setSiteApplications(data.applications);
+    setAdminMessage(editingSiteApplicationKey ? 'Uygulama güncellendi.' : 'Yeni uygulama eklendi.');
+    closeSiteApplicationModal();
+  };
+
+  const deleteSiteApplication = async () => {
+    if (!editingSiteApplicationKey) {
+      return;
+    }
+
+    if (!isConfirmingSiteApplicationDelete) {
+      setIsConfirmingSiteApplicationDelete(true);
+      setAdminMessage('Uygulamayı silmek için silme ikonuna tekrar tıklayın.');
+      return;
+    }
+
+    const response = await authorizedFetch(`/api/site-applications/${encodeURIComponent(editingSiteApplicationKey)}`, {
+      method: 'DELETE',
+    });
+    const data = (await response.json().catch(() => null)) as { applications?: SiteApplication[] } | null;
+
+    if (response.status === 401) {
+      setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+      await logoutAdmin();
+      return;
+    }
+
+    if (!response.ok || !data?.applications) {
+      setAdminMessage('Uygulama silinemedi.');
+      return;
+    }
+
+    setSiteApplications(data.applications);
+    setAdminMessage('Uygulama silindi.');
+    closeSiteApplicationModal();
+  };
+
   const saveSitePage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -4896,6 +5545,7 @@ function App() {
       key: sitePageForm.key.trim(),
       slug: sitePageForm.slug.trim(),
       title: sitePageForm.title.trim(),
+      productKey: sitePageForm.productKey.trim(),
       htmlContent: sitePageForm.htmlContent,
       metaTitle: sitePageForm.metaTitle.trim(),
       metaKeywords: sitePageForm.metaKeywords.trim(),
@@ -4968,6 +5618,66 @@ function App() {
     setAdminMessage('Sayfa silindi.');
     closeSitePageModal();
   };
+
+  const closeHeaderMenus = () => {
+    setIsHeaderProductsMenuOpen(false);
+    setIsHeaderMenuOpen(false);
+  };
+
+  const renderHeaderMenuPanel = (contactHref: string) => (
+    <motion.nav
+      className={`headerMenuPanel${isHeaderProductsMenuOpen ? ' hasProductsOpen' : ''}`}
+      aria-label="Ana menü"
+      initial={{ opacity: 0, y: -10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -10, scale: 0.98 }}
+      transition={{ duration: 0.18 }}
+    >
+      <a href="/" onClick={closeHeaderMenus}>Ana Sayfa</a>
+      <a href="/hizmetler" onClick={closeHeaderMenus}>Hizmetler</a>
+      <a href="/blog" onClick={closeHeaderMenus}>Blog</a>
+      <a href={contactHref} onClick={closeHeaderMenus}>İletişim</a>
+      <button
+        type="button"
+        className={`headerMenuProductsToggle${isHeaderProductsMenuOpen ? ' active' : ''}`}
+        onClick={() => setIsHeaderProductsMenuOpen((isOpen) => !isOpen)}
+      >
+        Ürünler
+        <ChevronDown size={16} strokeWidth={2.4} />
+      </button>
+      {isHeaderProductsMenuOpen && (
+        <div className="headerProductsPanel" aria-label="Ürünler menüsü">
+          {headerProductGroups.map((group) => (
+            <section className="headerProductsCategory" key={group.category.key}>
+              <h3>{group.category.title}</h3>
+              <div className="headerProductsGrid">
+                {group.products.map(({ product, href }) => (
+                  <a
+                    key={product.key}
+                    className={`headerProductCard${product.isActive ? '' : ' disabled'}`}
+                    href={href}
+                    onClick={(event) => {
+                      if (!product.isActive) {
+                        event.preventDefault();
+                        return;
+                      }
+                      closeHeaderMenus();
+                    }}
+                  >
+                    <CatalogImage
+                      src={product.imageSquare || product.imageHorizontal || product.image}
+                      alt={product.alt || product.title}
+                    />
+                    <span>{product.title}</span>
+                  </a>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+    </motion.nav>
+  );
 
   if (isPanelPage && authStatus === 'checking') {
     return (
@@ -5118,22 +5828,22 @@ function App() {
             )}
             {canAccessModule('settings') && (
               <button
+                className={`adminNavItem${activeAdminSection === 'applications' ? ' active' : ''}`}
+                type="button"
+                onClick={() => setAdminSection('applications')}
+              >
+                <Layers size={20} strokeWidth={2.2} />
+                <span>Uygulamalar</span>
+              </button>
+            )}
+            {canAccessModule('settings') && (
+              <button
                 className={`adminNavItem${activeAdminSection === 'references' ? ' active' : ''}`}
                 type="button"
                 onClick={() => setAdminSection('references')}
               >
                 <ShieldCheck size={20} strokeWidth={2.2} />
                 <span>Referanslar</span>
-              </button>
-            )}
-            {canAccessModule('settings') && (
-              <button
-                className={`adminNavItem${activeAdminSection === 'sitePages' ? ' active' : ''}`}
-                type="button"
-                onClick={() => setAdminSection('sitePages')}
-              >
-                <Layers size={20} strokeWidth={2.2} />
-                <span>Sayfalar</span>
               </button>
             )}
             {canAccessModule('settings') && (
@@ -5239,10 +5949,10 @@ function App() {
                       ? 'Görsel Yönetimi'
                       : activeAdminSection === 'references'
                         ? 'Referanslar'
-                        : activeAdminSection === 'sitePages'
-                          ? 'Sayfalar'
-                          : activeAdminSection === 'services'
+                        : activeAdminSection === 'services'
                             ? 'Hizmet Alanları'
+                            : activeAdminSection === 'applications'
+                              ? 'Uygulamalar'
                             : activeAdminSection === 'quoteQuestions'
                               ? 'Teklif Soruları'
                               : activeAdminSection === 'quoteRequests'
@@ -5291,6 +6001,12 @@ function App() {
               <div className="adminTopbarActions">
                 <button type="button" onClick={openNewSiteServiceModal}>
                   Yeni Hizmet
+                </button>
+              </div>
+            ) : activeAdminSection === 'applications' ? (
+              <div className="adminTopbarActions">
+                <button type="button" onClick={openNewSiteApplicationModal}>
+                  Yeni Uygulama
                 </button>
               </div>
             ) : activeAdminSection === 'assets' ? (
@@ -5497,16 +6213,49 @@ function App() {
                   <strong>{sitePages.filter((page) => page.isActive).length}</strong>
                 </article>
                 <article>
-                  <span>URL</span>
-                  <strong>/cozum/slug</strong>
+                  <span>Listelenen</span>
+                  <strong>{visibleSitePages.length}</strong>
                 </article>
               </div>
 
+              <div className="adminProductFilters">
+                <label>
+                  Ürün filtresi
+                  <select
+                    value={sitePageProductFilter}
+                    onChange={(event) => setSitePageProductFilter(event.target.value)}
+                  >
+                    <option value="">Tüm ürünler</option>
+                    {adminCategories.map((category) => {
+                      const categoryProducts = getCategoryProducts(category.key);
+                      if (categoryProducts.length === 0) {
+                        return null;
+                      }
+
+                      return (
+                        <optgroup key={category.key} label={category.title}>
+                          {categoryProducts.map((product) => (
+                            <option key={product.key} value={product.key}>
+                              {product.title}
+                            </option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
+                  </select>
+                </label>
+                {sitePageProductFilter && (
+                  <button type="button" onClick={() => setSitePageProductFilter('')}>
+                    Filtreyi Temizle
+                  </button>
+                )}
+              </div>
+
               <div className="adminProducts adminReferenceGrid">
-                {sitePages.length === 0 ? (
+                {visibleSitePages.length === 0 ? (
                   <p className="adminProductEmpty">Henüz çözüm sayfası eklenmedi.</p>
                 ) : (
-                  sitePages.map((page) => (
+                  visibleSitePages.map((page) => (
                     <button
                       className={`adminProductCard adminServiceCard${page.isActive ? ' active' : ' passive'}`}
                       key={page.key}
@@ -5515,10 +6264,10 @@ function App() {
                     >
                       <div>
                         <span>
-                          {page.isActive ? 'Yayında' : 'Pasif'} / Sıra {page.sortOrder} · /cozum/{page.slug}
+                          {page.isActive ? 'Yayında' : 'Pasif'} / Ürün: {getAdminProductTitle(page.productKey)} / Sıra {page.sortOrder}
                         </span>
                         <h2>{page.title}</h2>
-                        <p>Slug: {page.slug}</p>
+                        <p>Slug: {page.slug} · /cozum/{page.slug}</p>
                       </div>
                     </button>
                   ))
@@ -5559,6 +6308,89 @@ function App() {
                       <p>{service.summary || 'Özet metni eklenmedi.'}</p>
                     </div>
                   </button>
+                ))}
+              </div>
+            </>
+          ) : activeAdminSection === 'applications' ? (
+            <>
+              <div className="adminStats">
+                <article>
+                  <span>Toplam Uygulama</span>
+                  <strong>{siteApplications.length}</strong>
+                </article>
+                <article>
+                  <span>Yayında</span>
+                  <strong>{siteApplications.filter((application) => application.isActive).length}</strong>
+                </article>
+                <article>
+                  <span>Listelenen</span>
+                  <strong>{visibleSiteApplications.length}</strong>
+                </article>
+              </div>
+
+              <div className="adminProductFilters">
+                <label>
+                  Ürün filtresi
+                  <select
+                    value={siteApplicationProductFilter}
+                    onChange={(event) => setSiteApplicationProductFilter(event.target.value)}
+                  >
+                    <option value="">Tüm ürünler</option>
+                    {adminCategories.map((category) => {
+                      const categoryProducts = getCategoryProducts(category.key);
+                      if (categoryProducts.length === 0) {
+                        return null;
+                      }
+
+                      return (
+                        <optgroup key={category.key} label={category.title}>
+                          {categoryProducts.map((product) => (
+                            <option key={product.key} value={product.key}>
+                              {product.title}
+                            </option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
+                  </select>
+                </label>
+                {siteApplicationProductFilter && (
+                  <button type="button" onClick={() => setSiteApplicationProductFilter('')}>
+                    Filtreyi Temizle
+                  </button>
+                )}
+              </div>
+
+              <div className="adminProducts adminReferenceGrid">
+                {visibleSiteApplications.length === 0 ? (
+                  <p className="adminProductEmpty">Henüz uygulama eklenmedi.</p>
+                ) : visibleSiteApplications.map((application) => (
+                  <article
+                    className={`adminProductCard adminServiceCard${application.isActive ? ' active' : ' passive'}`}
+                    key={application.key}
+                  >
+                    {application.imageUrl ? <img src={application.imageUrl} alt={application.title} /> : <span className="adminServiceImagePlaceholder">Görsel Yok</span>}
+                    <div>
+                      <span>
+                        {application.isActive ? 'Yayında' : 'Pasif'} / {application.productTitle || application.productKey} / Sıra {application.sortOrder}
+                      </span>
+                      <h2>{application.title}</h2>
+                      <p>{application.summary || 'Özet metni eklenmedi.'}</p>
+                      <div className="adminProductCardActions">
+                        <button type="button" onClick={() => openEditSiteApplicationModal(application)}>
+                          Düzenle
+                        </button>
+                        <button
+                          type="button"
+                          className="iconOnly"
+                          aria-label={`${application.title} kaydını kopyala`}
+                          onClick={() => openCopySiteApplicationModal(application)}
+                        >
+                          <Copy size={15} strokeWidth={2.4} />
+                        </button>
+                      </div>
+                    </div>
+                  </article>
                 ))}
               </div>
             </>
@@ -7056,6 +7888,16 @@ function App() {
                       />
                     </label>
 
+                    <label className="adminFormWide">
+                      Sayfa İçeriği (HTML)
+                      <textarea
+                        rows={14}
+                        value={categoryForm.htmlContent}
+                        onChange={(event) => updateCategoryForm('htmlContent', event.target.value)}
+                        placeholder="<p>Kategori çözüm sayfasında gösterilecek içerik...</p>"
+                      />
+                    </label>
+
                     <label>
                       SEO Başlık
                       <input
@@ -7081,24 +7923,6 @@ function App() {
                         onChange={(event) => updateCategoryForm('metaDescription', event.target.value)}
                         placeholder="Arama sonucu açıklama metni"
                       />
-                    </label>
-
-                    <label className="adminFormWide">
-                      Ana sayfa kategorisi → çözüm sayfası
-                      <select
-                        value={categoryForm.pageSlug}
-                        onChange={(event) => updateCategoryForm('pageSlug', event.target.value)}
-                      >
-                        <option value="">Yok (galeride yalnızca büyük görsel)</option>
-                        {sitePages.map((page) => (
-                          <option key={page.key} value={page.slug}>
-                            {page.title} ({page.slug}){page.isActive ? '' : ' — pasif'}
-                          </option>
-                        ))}
-                      </select>
-                      <span className="adminFormHint adminFormWide">
-                        Dolu ise galeride tıklanınca <code>/cozum/slug</code> sayfasına gidilir. Slug’u önce Sayfalar bölümünde oluşturun.
-                      </span>
                     </label>
 
                     <label className="adminFormWide">
@@ -7342,6 +8166,179 @@ function App() {
             </motion.div>
           )}
 
+          {isSiteApplicationModalOpen && (
+            <motion.div
+              className="adminModalOverlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={closeSiteApplicationModal}
+            >
+              <motion.section
+                className="adminProductModal adminReferenceModal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="site-application-modal-title"
+                initial={{ opacity: 0, y: 24, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                onClick={(modalEvent) => modalEvent.stopPropagation()}
+              >
+                <div className="adminModalHeader">
+                  <div>
+                    <p>Uygulamalar</p>
+                    <h2 id="site-application-modal-title">{editingSiteApplicationKey ? 'Uygulamayı düzenle' : 'Yeni uygulama'}</h2>
+                  </div>
+                  <button type="button" aria-label="Modalı kapat" onClick={closeSiteApplicationModal}>
+                    <X size={20} strokeWidth={2.2} />
+                  </button>
+                </div>
+
+                <form ref={siteApplicationFormRef} className="adminProductForm adminReferenceForm" onSubmit={saveSiteApplication}>
+                  <label>
+                    Kayıt Anahtarı
+                    <input
+                      required
+                      disabled={Boolean(editingSiteApplicationKey)}
+                      value={siteApplicationForm.key}
+                      onChange={(event) => updateSiteApplicationForm('key', event.target.value)}
+                      placeholder="uygulamaAnahtari"
+                    />
+                  </label>
+                  <label>
+                    Ürün
+                    <select
+                      required
+                      value={siteApplicationForm.productKey}
+                      onChange={(event) => updateSiteApplicationForm('productKey', event.target.value)}
+                    >
+                      <option value="">Ürün seçin</option>
+                      {adminCategories.map((category) => {
+                        const categoryProducts = getCategoryProducts(category.key);
+
+                        if (categoryProducts.length === 0) {
+                          return null;
+                        }
+
+                        return (
+                          <optgroup key={category.key} label={category.title}>
+                            {categoryProducts.map((product) => (
+                              <option key={product.key} value={product.key}>
+                                {product.title}
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
+                    </select>
+                  </label>
+                  <label>
+                    Sıra
+                    <input
+                      min="0"
+                      step="1"
+                      type="number"
+                      value={siteApplicationForm.sortOrder}
+                      onChange={(event) => updateSiteApplicationForm('sortOrder', event.target.value)}
+                      placeholder="0"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    Başlık
+                    <input
+                      required
+                      value={siteApplicationForm.title}
+                      onChange={(event) => updateSiteApplicationTitle(event.target.value)}
+                      placeholder="Uygulama başlığı"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    Özet
+                    <textarea
+                      required
+                      rows={3}
+                      value={siteApplicationForm.summary}
+                      onChange={(event) => updateSiteApplicationForm('summary', event.target.value)}
+                      placeholder="Kartta gösterilecek kısa özet"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    Açıklama
+                    <textarea
+                      required
+                      rows={6}
+                      value={siteApplicationForm.description}
+                      onChange={(event) => updateSiteApplicationForm('description', event.target.value)}
+                      placeholder="Detay açıklama metni"
+                    />
+                  </label>
+                  <label className="adminFormWide">
+                    Görsel
+                    <AdminImageUploadControl
+                      value={siteApplicationForm.imageUrl}
+                      onUrlChange={(value) => updateSiteApplicationForm('imageUrl', value)}
+                      inputRef={siteApplicationImageInputRef}
+                      onFileInputChange={uploadSiteApplicationImage}
+                      onFileDrop={uploadSiteApplicationImageFile}
+                      buttonLabel={isUploadingSiteApplicationImage ? 'Yükleniyor...' : 'Yükle / Bırak'}
+                      disabled={isUploadingSiteApplicationImage}
+                      placeholder="https://... veya sürükle bırak"
+                    />
+                    {siteApplicationForm.imageUrl && (
+                      <button
+                        className="adminReferencePreviewButton"
+                        type="button"
+                        onClick={() =>
+                          setImagePreview({
+                            title: siteApplicationForm.title || 'Uygulama görseli',
+                            url: siteApplicationForm.imageUrl,
+                          })
+                        }
+                      >
+                        <img src={siteApplicationForm.imageUrl} alt="" />
+                        <span>Önizle</span>
+                      </button>
+                    )}
+                  </label>
+
+                  <div className="adminFormActions">
+                    <label className="adminStatusSwitch">
+                      <input
+                        checked={siteApplicationForm.isActive}
+                        type="checkbox"
+                        onChange={(event) => updateSiteApplicationForm('isActive', event.target.checked)}
+                      />
+                      <span />
+                      <strong>{siteApplicationForm.isActive ? 'Yayında' : 'Pasif'}</strong>
+                    </label>
+                    {editingSiteApplicationKey && (
+                      <button
+                        className={`dangerButton${isConfirmingSiteApplicationDelete ? ' confirmDelete' : ''}`}
+                        type="button"
+                        aria-label={isConfirmingSiteApplicationDelete ? 'Silme işlemini onayla' : 'Sil'}
+                        onClick={deleteSiteApplication}
+                      >
+                        <Trash2 size={18} strokeWidth={2.4} />
+                      </button>
+                    )}
+                    <button type="button" aria-label="Vazgeç" onClick={closeSiteApplicationModal}>
+                      <X size={18} strokeWidth={2.4} />
+                    </button>
+                    <button
+                      className="adminSaveButton"
+                      type="button"
+                      aria-label={editingSiteApplicationKey ? 'Güncelle' : 'Kaydet'}
+                      onClick={submitSiteApplicationForm}
+                    >
+                      <Check size={18} strokeWidth={2.4} />
+                    </button>
+                  </div>
+                </form>
+              </motion.section>
+            </motion.div>
+          )}
+
           {isSitePageModalOpen && (
             <motion.div
               className="adminModalOverlay"
@@ -7403,6 +8400,32 @@ function App() {
                     />
                   </label>
                   <label className="adminFormWide">
+                    Bağlı Ürün
+                    <select
+                      required
+                      value={sitePageForm.productKey}
+                      onChange={(event) => updateSitePageForm('productKey', event.target.value)}
+                    >
+                      <option value="">Ürün seçin</option>
+                      {adminCategories.map((category) => {
+                        const categoryProducts = getCategoryProducts(category.key);
+                        if (categoryProducts.length === 0) {
+                          return null;
+                        }
+
+                        return (
+                          <optgroup key={category.key} label={category.title}>
+                            {categoryProducts.map((product) => (
+                              <option key={product.key} value={product.key}>
+                                {product.title}
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
+                    </select>
+                  </label>
+                  <label className="adminFormWide">
                     Sayfa başlığı
                     <input
                       required
@@ -7413,12 +8436,82 @@ function App() {
                   </label>
                   <label className="adminFormWide">
                     İçerik (HTML)
-                    <textarea
-                      rows={12}
-                      value={sitePageForm.htmlContent}
-                      onChange={(event) => updateSitePageForm('htmlContent', event.target.value)}
-                      placeholder="<p>Metin...</p>"
-                    />
+                    <div className={`sitePageEditorShell${isSitePageEditorFullscreen ? ' fullscreen' : ''}`}>
+                      <div className="sitePageEditorToolbar">
+                        <div className="sitePageEditorModeSwitch" aria-label="İçerik düzenleme modu">
+                          <button
+                            type="button"
+                            className={sitePageEditorMode === 'normal' ? 'active' : ''}
+                            onClick={() => setSitePageEditorMode('normal')}
+                          >
+                            Normal
+                          </button>
+                          <button
+                            type="button"
+                            className={sitePageEditorMode === 'html' ? 'active' : ''}
+                            onClick={() => setSitePageEditorMode('html')}
+                          >
+                            HTML
+                          </button>
+                        </div>
+
+                        <div className="sitePageEditorActions">
+                          <input
+                            ref={sitePageEditorImageInputRef}
+                            className="adminHiddenFileInput"
+                            type="file"
+                            accept="image/*"
+                            aria-label="İçeriğe görsel ekle"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) {
+                                void uploadSitePageInlineImage(file);
+                              }
+                            }}
+                          />
+                          {sitePageEditorMode === 'normal' && (
+                            <>
+                              <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => applySitePageEditorCommand('bold')}>B</button>
+                              <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => applySitePageEditorCommand('italic')}>I</button>
+                              <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => applySitePageEditorCommand('insertUnorderedList')}>• Liste</button>
+                              <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => applySitePageEditorCommand('insertOrderedList')}>1. Liste</button>
+                              <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => applySitePageEditorCommand('formatBlock', 'h2')}>H2</button>
+                              <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => applySitePageEditorCommand('removeFormat')}>Temizle</button>
+                            </>
+                          )}
+                          <button
+                            type="button"
+                            disabled={isUploadingSitePageInlineImage}
+                            onClick={() => sitePageEditorImageInputRef.current?.click()}
+                          >
+                            {isUploadingSitePageInlineImage ? 'Resim Yükleniyor...' : 'Resim Ekle'}
+                          </button>
+                          <button type="button" onClick={() => setIsSitePageEditorFullscreen((current) => !current)}>
+                            {isSitePageEditorFullscreen ? 'Pencere Modu' : 'Tam Ekran'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {sitePageEditorMode === 'html' ? (
+                        <textarea
+                          ref={sitePageHtmlEditorRef}
+                          className="sitePageHtmlEditor"
+                          rows={14}
+                          value={sitePageForm.htmlContent}
+                          onChange={(event) => updateSitePageForm('htmlContent', event.target.value)}
+                          placeholder="<p>Metin...</p>"
+                        />
+                      ) : (
+                        <div
+                          ref={sitePageVisualEditorRef}
+                          className="sitePageVisualEditor"
+                          contentEditable
+                          suppressContentEditableWarning
+                          data-placeholder="Metninizi buraya yazın..."
+                          onInput={(event) => updateSitePageForm('htmlContent', event.currentTarget.innerHTML)}
+                        />
+                      )}
+                    </div>
                   </label>
                   <label>
                     SEO başlık
@@ -7857,6 +8950,16 @@ function App() {
                     />
                   </label>
 
+                  <label className="adminFormWide">
+                    Sayfa İçeriği (HTML)
+                    <textarea
+                      rows={14}
+                      value={productForm.htmlContent}
+                      onChange={(event) => updateProductForm('htmlContent', event.target.value)}
+                      placeholder="<p>Ürün sayfasında gösterilecek içerik...</p>"
+                    />
+                  </label>
+
                   <label>
                     SEO Başlık
                     <input
@@ -8059,19 +9162,7 @@ function App() {
 
           <AnimatePresence>
             {isHeaderMenuOpen && (
-              <motion.nav
-                className="headerMenuPanel"
-                aria-label="Ana menü"
-                initial={{ opacity: 0, y: -10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                transition={{ duration: 0.18 }}
-              >
-                <a href="/" onClick={() => setIsHeaderMenuOpen(false)}>Ana Sayfa</a>
-                <a href="/hizmetler" onClick={() => setIsHeaderMenuOpen(false)}>Hizmetler</a>
-                <a href="/blog" onClick={() => setIsHeaderMenuOpen(false)}>Blog</a>
-                <a href="/#iletisim" onClick={() => setIsHeaderMenuOpen(false)}>İletişim</a>
-              </motion.nav>
+              renderHeaderMenuPanel('/#iletisim')
             )}
           </AnimatePresence>
         </header>
@@ -8082,11 +9173,124 @@ function App() {
               <a className="blogBackLink" href="/">
                 Ana sayfaya dön
               </a>
-              {selectedSitePage ? (
+              {selectedSolutionProduct || selectedSolutionCategory ? (
                 <>
                   <p className="eyebrow">Çözüm</p>
-                  <h1>{selectedSitePage.title}</h1>
-                  <div className="blogDetailContent" dangerouslySetInnerHTML={{ __html: selectedSitePage.htmlContent }} />
+                  <h1>{selectedSolutionTitle}</h1>
+                  <div className="blogDetailContent" dangerouslySetInnerHTML={{ __html: selectedSolutionHtmlContent }} />
+                  {activeSolutionApplications.length > 0 && (
+                    <section className="solutionApplications">
+                      <div className="solutionApplicationsHeader">
+                        <p className="eyebrow">Uygulama Örnekleri</p>
+                        <h2>Bu çözüm alanında öne çıkan uygulamalar</h2>
+                      </div>
+                      <div className="solutionApplicationsGrid">
+                        {activeSolutionApplications.map((application) => (
+                          <button
+                            className="solutionApplicationCard"
+                            key={application.key}
+                            type="button"
+                            onClick={() => setSelectedSolutionApplication(application)}
+                            disabled={!application.imageUrl}
+                            aria-label={`${application.title} görselini büyüt`}
+                          >
+                            {application.imageUrl ? <img src={application.imageUrl} alt={application.title} /> : null}
+                            <div>
+                              <h3>{application.title}</h3>
+                              <div className="solutionApplicationHiddenTags" aria-hidden="true">
+                                <span>{application.productTitle || application.productKey} / {application.categoryTitle || application.categoryKey}</span>
+                                <p>{application.summary}</p>
+                                <small>{application.description}</small>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                  <AnimatePresence>
+                    {selectedSolutionApplication?.imageUrl ? (
+                      <motion.div
+                        className="imageRevealLightbox"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Uygulama görseli önizlemesi"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setSelectedSolutionApplication(null)}
+                      >
+                        <motion.button
+                          type="button"
+                          className="imageRevealLightboxClose"
+                          aria-label="Önizlemeyi kapat"
+                          initial={{ opacity: 0, y: -8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -8 }}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedSolutionApplication(null);
+                          }}
+                        >
+                          Kapat
+                        </motion.button>
+                        {solutionApplicationsWithImage.length > 1 && (
+                          <>
+                            <button
+                              type="button"
+                              className="imageRevealLightboxNav prev"
+                              aria-label="Önceki görsel"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                goToPreviousSolutionApplication();
+                              }}
+                            >
+                              <ChevronLeft size={20} strokeWidth={2.4} />
+                            </button>
+                            <button
+                              type="button"
+                              className="imageRevealLightboxNav next"
+                              aria-label="Sonraki görsel"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                goToNextSolutionApplication();
+                              }}
+                            >
+                              <ChevronRight size={20} strokeWidth={2.4} />
+                            </button>
+                          </>
+                        )}
+                        <motion.img
+                          className="imageRevealLightboxImage"
+                          src={selectedSolutionApplication.imageUrl}
+                          alt={selectedSolutionApplication.title}
+                          initial={{ opacity: 0, scale: 0.96 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.96 }}
+                          transition={{ duration: 0.2 }}
+                          onClick={(event) => event.stopPropagation()}
+                        />
+                        <motion.p
+                          className="solutionApplicationLightboxTitle"
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 8 }}
+                        >
+                          {selectedSolutionApplication.title}
+                        </motion.p>
+                        <motion.p
+                          className="solutionApplicationLightboxCount"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                        >
+                          {selectedSolutionApplicationIndex >= 0
+                            ? `${selectedSolutionApplicationIndex + 1} / ${solutionApplicationsWithImage.length}`
+                            : `1 / ${solutionApplicationsWithImage.length}`}
+                        </motion.p>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
                 </>
               ) : (
                 <>
@@ -8106,7 +9310,7 @@ function App() {
                   {selectedBlogPost.image && (
                     <img src={selectedBlogPost.image} alt={selectedBlogPost.imageAlt || selectedBlogPost.title} />
                   )}
-                  <p className="eyebrow">{selectedBlogPost.categories[0]?.title ?? 'Blog'}</p>
+                  <p className="eyebrow">{selectedBlogPost.categories?.[0]?.title ?? 'Blog'}</p>
                   <h1>{selectedBlogPost.title}</h1>
                   <p className="blogDetailSummary">{selectedBlogPost.summary}</p>
                   <div className="blogDetailMeta">
@@ -8300,19 +9504,7 @@ function App() {
 
           <AnimatePresence>
             {isHeaderMenuOpen && (
-              <motion.nav
-                className="headerMenuPanel"
-                aria-label="Ana menü"
-                initial={{ opacity: 0, y: -10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                transition={{ duration: 0.18 }}
-              >
-                <a href="/" onClick={() => setIsHeaderMenuOpen(false)}>Ana Sayfa</a>
-                <a href="/hizmetler" onClick={() => setIsHeaderMenuOpen(false)}>Hizmetler</a>
-                <a href="/blog" onClick={() => setIsHeaderMenuOpen(false)}>Blog</a>
-                <a href="/#iletisim" onClick={() => setIsHeaderMenuOpen(false)}>İletişim</a>
-              </motion.nav>
+              renderHeaderMenuPanel('/#iletisim')
             )}
           </AnimatePresence>
         </header>
@@ -8612,19 +9804,7 @@ function App() {
 
           <AnimatePresence>
             {isHeaderMenuOpen && (
-              <motion.nav
-                className="headerMenuPanel"
-                aria-label="Ana menü"
-                initial={{ opacity: 0, y: -10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                transition={{ duration: 0.18 }}
-              >
-                <a href="/" onClick={() => setIsHeaderMenuOpen(false)}>Ana Sayfa</a>
-                <a href="/hizmetler" onClick={() => setIsHeaderMenuOpen(false)}>Hizmetler</a>
-                <a href="/blog" onClick={() => setIsHeaderMenuOpen(false)}>Blog</a>
-                <a href="/#iletisim" onClick={() => setIsHeaderMenuOpen(false)}>İletişim</a>
-              </motion.nav>
+              renderHeaderMenuPanel('/#iletisim')
             )}
           </AnimatePresence>
         </header>
@@ -8647,7 +9827,7 @@ function App() {
                 <a className="latestBlogCard" href={`/blog/${post.slug}`} key={post.key}>
                   {post.image && <img src={post.image} alt={post.imageAlt || post.title} />}
                   <div>
-                    <span>{post.categories[0]?.title ?? 'Blog'}</span>
+                    <span>{post.categories?.[0]?.title ?? 'Blog'}</span>
                     <h3>{post.title}</h3>
                     <p>{post.summary}</p>
                   </div>
@@ -8862,19 +10042,7 @@ function App() {
 
           <AnimatePresence>
             {isHeaderMenuOpen && (
-              <motion.nav
-                className="headerMenuPanel"
-                aria-label="Ana menü"
-                initial={{ opacity: 0, y: -10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                transition={{ duration: 0.18 }}
-              >
-                <a href="/" onClick={() => setIsHeaderMenuOpen(false)}>Ana Sayfa</a>
-                <a href="/hizmetler" onClick={() => setIsHeaderMenuOpen(false)}>Hizmetler</a>
-                <a href="/blog" onClick={() => setIsHeaderMenuOpen(false)}>Blog</a>
-                <a href="#iletisim" onClick={() => setIsHeaderMenuOpen(false)}>İletişim</a>
-              </motion.nav>
+              renderHeaderMenuPanel('#iletisim')
             )}
           </AnimatePresence>
         </header>
@@ -9653,7 +10821,7 @@ function App() {
             {activeLatestBlogPost && (
               <div className="latestBlogCarouselContent">
                 <div className="latestBlogText">
-                  <span>{activeLatestBlogPost.categories[0]?.title ?? 'Blog'}</span>
+                  <span>{activeLatestBlogPost.categories?.[0]?.title ?? 'Blog'}</span>
                   <h3>{activeLatestBlogPost.title}</h3>
                   <p>{activeLatestBlogPost.summary}</p>
                 </div>
@@ -9683,7 +10851,7 @@ function App() {
                 type="button"
                 onClick={() => setActiveLatestBlogIndex(index)}
               >
-                <span>{post.categories[0]?.title ?? 'Blog'}</span>
+                <span>{post.categories?.[0]?.title ?? 'Blog'}</span>
                 <strong>{post.title}</strong>
               </button>
             ))}

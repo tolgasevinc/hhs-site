@@ -1,0 +1,1 @@
+ALTER TABLE site_pages ADD COLUMN product_key TEXT NOT NULL DEFAULT '';
