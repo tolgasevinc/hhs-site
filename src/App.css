@@ -687,6 +687,72 @@ input[type='radio'] {
   margin-inline-start: auto;
 }
 
+.adminProductCard.adminApplicationCard > div {
+  min-width: 0;
+}
+
+.adminApplicationCardTitle {
+  margin: 0 0 10px;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--color-navy);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.adminApplicationSortControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-end: auto;
+  cursor: default;
+}
+
+.adminApplicationSortLabel {
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--color-dark-gray);
+}
+
+.adminApplicationSortInput {
+  width: 52px;
+  min-height: 34px;
+  padding: 0 6px;
+  border: 1px solid rgba(37, 54, 105, 0.14);
+  border-radius: 10px;
+  background: #f7f8fb;
+  color: var(--color-navy);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.adminApplicationSortInput:disabled {
+  opacity: 0.55;
+}
+
+.adminProductCard.adminServiceCard.adminApplicationCard.passive {
+  opacity: 0.65;
+  border-style: dashed;
+  border-color: rgba(114, 114, 114, 0.3);
+}
+
+.adminProductCard.adminServiceCard.adminApplicationCard.passive img,
+.adminProductCard.adminServiceCard.adminApplicationCard.passive .adminServiceImagePlaceholder {
+  opacity: 0.78;
+  filter: grayscale(0.12);
+}
+
+.adminProductCard.adminServiceCard.adminApplicationCard.passive h2,
+.adminProductCard.adminServiceCard.adminApplicationCard.passive p {
+  opacity: 0.82;
+}
+
 .adminProductCard span {
   display: inline-flex;
   padding: 5px 8px;
@@ -4983,6 +5049,23 @@ article p {
   object-fit: contain;
 }
 
+.solutionApplicationLightboxStage {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  max-width: min(1100px, calc(100vw - 48px));
+  max-height: calc(100vh - 120px);
+}
+
+.solutionApplicationLightboxStage .imageRevealLightboxImage {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(100vh - 120px);
+  margin-inline: auto;
+}
+
 .imageRevealLightboxClose {
   position: absolute;
   top: 18px;
@@ -4999,9 +5082,45 @@ article p {
   cursor: pointer;
 }
 
-.imageRevealLightboxNav {
+.imageRevealLightboxNavCluster {
   position: absolute;
   top: 50%;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.imageRevealLightboxNavCluster .imageRevealLightboxNav {
+  pointer-events: auto;
+}
+
+.imageRevealLightboxNavCluster--prev {
+  left: 18px;
+  flex-direction: row;
+}
+
+.imageRevealLightboxNavCluster--next {
+  right: 18px;
+  flex-direction: row;
+}
+
+.imageRevealLightboxNavLabel {
+  font-size: 12px;
+  font-weight: 900;
+  color: #ffffff;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.75);
+  pointer-events: none;
+}
+
+.imageRevealLightboxNav {
+  position: relative;
+  top: auto;
+  flex-shrink: 0;
   z-index: 1;
   display: inline-flex;
   align-items: center;
@@ -5013,15 +5132,7 @@ article p {
   background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
   cursor: pointer;
-  transform: translateY(-50%);
-}
-
-.imageRevealLightboxNav.prev {
-  left: 24px;
-}
-
-.imageRevealLightboxNav.next {
-  right: 24px;
+  transform: none;
 }
 
 .solutionApplicationsHeader h2 {
@@ -5059,12 +5170,15 @@ article p {
   transform: translateY(-1px);
 }
 
-.solutionApplicationCard:disabled {
+.solutionApplicationCard:disabled,
+.solutionApplicationCard.disabled {
   cursor: default;
 }
 
 .solutionApplicationCard:disabled:hover,
-.solutionApplicationCard:disabled:focus-visible {
+.solutionApplicationCard:disabled:focus-visible,
+.solutionApplicationCard.disabled:hover,
+.solutionApplicationCard.disabled:focus-visible {
   border-color: rgba(37, 54, 105, 0.12);
   box-shadow: none;
   transform: none;
@@ -5082,8 +5196,25 @@ article p {
 
 .solutionApplicationCard h3 {
   margin: 0;
-  color: var(--color-navy);
-  font-size: 1.05rem;
+  color: var(--color-dark-gray);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.solutionApplicationSummary {
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--color-dark-gray);
+  word-break: break-word;
+}
+
+.solutionApplicationSummary a {
+  color: var(--color-orange);
+  font-weight: 800;
+  text-decoration: underline;
 }
 
 .solutionApplicationHiddenTags {
@@ -5092,30 +5223,48 @@ article p {
 
 .solutionApplicationLightboxTitle {
   position: absolute;
-  top: 24px;
-  left: 50%;
-  margin: 0;
+  top: 14px;
+  left: 10px;
+  right: 10px;
+  z-index: 2;
+  margin: 0 auto;
   padding: 8px 14px;
+  width: fit-content;
+  max-width: calc(100% - 20px);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.14);
   color: #ffffff;
   font-size: 13px;
   font-weight: 800;
-  transform: translateX(-50%);
+  text-align: center;
+  box-sizing: border-box;
 }
 
-.solutionApplicationLightboxCount {
+.solutionApplicationLightboxSummary {
   position: absolute;
-  bottom: 24px;
-  left: 50%;
+  bottom: 14px;
+  left: 12px;
+  right: 12px;
+  z-index: 2;
+  max-height: min(22vh, 160px);
   margin: 0;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.2);
-  color: #ffffff;
-  font-size: 12px;
-  font-weight: 900;
-  transform: translateX(-50%);
+  padding: 10px 14px;
+  overflow-y: auto;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.42);
+  color: #f3f4f6;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: center;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
+}
+
+.solutionApplicationLightboxSummary a {
+  color: #fdba74;
+  font-weight: 800;
+  text-decoration: underline;
 }
 
 .serviceRequestModal {

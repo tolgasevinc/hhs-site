@@ -1,4 +1,16 @@
-import { type ChangeEvent, type DragEvent, type FormEvent, type MouseEvent, type PointerEvent, type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type ChangeEvent,
+  type DragEvent,
+  type FormEvent,
+  type MouseEvent,
+  type PointerEvent,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion';
 import {
   Bell,
@@ -1063,6 +1075,30 @@ const withImageVariantFallbacks = <
   };
 };
 
+/** Varsayılan Worker kökü — build sırasında VITE_API_ORIGIN ile geçersiz kılınır */
+const defaultPublicApiOrigin = 'https://hhsotomatikkapi.com';
+
+const resolvePublicApiOrigin = (): string => {
+  const raw = import.meta.env.VITE_API_ORIGIN;
+  if (typeof raw !== 'string') {
+    return defaultPublicApiOrigin;
+  }
+  const trimmed = raw.trim().replace(/\/$/, '');
+  if (!trimmed || trimmed === 'undefined') {
+    return defaultPublicApiOrigin;
+  }
+  if (!/^https:\/\//i.test(trimmed)) {
+    return defaultPublicApiOrigin;
+  }
+  return trimmed;
+};
+
+const publicApiOrigin = resolvePublicApiOrigin();
+
+/**
+ * API istekleri: yalnızca `vite dev` + localhost'ta göreli `/api` (proxy).
+ * Üretim derlemesinde her zaman `publicApiOrigin` — statik hosting'de göreli `/api` Worker'a düşmez.
+ */
 const apiUrl = (path: string) => {
   if (typeof window === 'undefined') {
     return path;
@@ -1070,15 +1106,151 @@ const apiUrl = (path: string) => {
 
   const host = window.location.hostname;
 
-  if (host === 'hhsotomatikkapi.com') {
-    return path;
-  }
-
   if (import.meta.env.DEV && (host === 'localhost' || host === '127.0.0.1')) {
-    return path;
+    return path.startsWith('/') ? path : `/${path}`;
   }
 
-  return `https://hhsotomatikkapi.com${path}`;
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${publicApiOrigin}${normalizedPath}`;
+};
+
+const resolveDisplayAssetUrl = (url: string | undefined | null): string => {
+  if (url == null) {
+    return '';
+  }
+
+  const trimmed = url.trim();
+
+  if (!trimmed) {
+    return '';
+  }
+
+  if (trimmed.startsWith('/api/')) {
+    return apiUrl(trimmed);
+  }
+
+  return trimmed;
+};
+
+const normalizeAdminProductAssetUrls = (product: AdminProduct): AdminProduct => ({
+  ...product,
+  image: resolveDisplayAssetUrl(product.image),
+  imageSquare: resolveDisplayAssetUrl(product.imageSquare),
+  imageHorizontal: resolveDisplayAssetUrl(product.imageHorizontal),
+  imageVertical: resolveDisplayAssetUrl(product.imageVertical),
+});
+
+const normalizeAdminCategoryAssetUrls = (category: AdminCategory): AdminCategory => ({
+  ...category,
+  image: resolveDisplayAssetUrl(category.image),
+  imageSquare: resolveDisplayAssetUrl(category.imageSquare),
+  imageHorizontal: resolveDisplayAssetUrl(category.imageHorizontal),
+  imageVertical: resolveDisplayAssetUrl(category.imageVertical),
+});
+
+const normalizeSiteApplicationAssetUrls = (application: SiteApplication): SiteApplication => ({
+  ...application,
+  imageUrl: resolveDisplayAssetUrl(application.imageUrl),
+});
+
+const normalizeSiteServiceAssetUrls = (service: SiteService): SiteService => ({
+  ...service,
+  imageUrl: resolveDisplayAssetUrl(service.imageUrl),
+  iconUrl: resolveDisplayAssetUrl(service.iconUrl),
+});
+
+const normalizeSiteReferenceAssetUrls = (reference: SiteReference): SiteReference => ({
+  ...reference,
+  imageUrl: resolveDisplayAssetUrl(reference.imageUrl),
+});
+
+const normalizeBlogPostAssetUrls = (post: BlogPost): BlogPost => ({
+  ...post,
+  image: resolveDisplayAssetUrl(post.image),
+});
+
+const normalizeQuoteQuestionAssetUrls = (question: QuoteQuestion): QuoteQuestion => ({
+  ...question,
+  imageUrl: resolveDisplayAssetUrl(question.imageUrl),
+});
+
+/** Rich text / panel HTML içindeki göreli /api/... yollarını tarayıcıda mutlak API adresine çevirir */
+const resolveApiAssetUrlsInHtml = (html: string): string => {
+  if (!html) {
+    return html;
+  }
+
+  const attrs = ['src', 'href', 'poster', 'data-src'];
+
+  let resolved = html;
+
+  attrs.forEach((attr) => {
+    resolved = resolved.replace(
+      new RegExp(`(\\s${attr}\\s*=\\s*")([^"]*)(")`, 'gi'),
+      (match, before: string, value: string, close: string) =>
+        value.trim().startsWith('/api/')
+          ? `${before}${resolveDisplayAssetUrl(value.trim())}${close}`
+          : match,
+    );
+
+    resolved = resolved.replace(
+      new RegExp(`(\\s${attr}\\s*=\\s*')([^']*)(')`, 'gi'),
+      (match, before: string, value: string, close: string) =>
+        value.trim().startsWith('/api/')
+          ? `${before}${resolveDisplayAssetUrl(value.trim())}${close}`
+          : match,
+    );
+  });
+
+  resolved = resolved.replace(/url\(\s*(["']?)(\/api\/[^)"']+?)\1\s*\)/gi, (_, quote: string, path: string) => {
+    const full = resolveDisplayAssetUrl(path);
+    return quote ? `url(${quote}${full}${quote})` : `url("${full}")`;
+  });
+
+  resolved = resolved.replace(/\ssrcset\s*=\s*"([^"]*)"/gi, (match, value: string) => {
+    const rewritten = value.replace(/\/api\/[^ \t\n\r,]+/g, (path) => resolveDisplayAssetUrl(path));
+    return rewritten !== value ? match.replace(value, rewritten) : match;
+  });
+
+  resolved = resolved.replace(/\ssrcset\s*=\s*'([^']*)'/gi, (match, value: string) => {
+    const rewritten = value.replace(/\/api\/[^ \t\n\r,]+/g, (path) => resolveDisplayAssetUrl(path));
+    return rewritten !== value ? match.replace(value, rewritten) : match;
+  });
+
+  return resolved;
+};
+
+const escapeHtmlPlainText = (text: string) =>
+  text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+/** Özet alanı düz metin; https:// ile başlayan adresleri (Instagram vb.) güvenli biçimde linke çevirir. */
+const linkifyPlainTextToHtml = (raw: string): string => {
+  const lines = raw.replace(/\r\n/g, '\n').split('\n');
+
+  return lines
+    .map((line) => {
+      const urlPattern = /\bhttps?:\/\/[^\s<]+/gi;
+      let out = '';
+      let last = 0;
+      let match: RegExpExecArray | null;
+
+      while ((match = urlPattern.exec(line)) !== null) {
+        out += escapeHtmlPlainText(line.slice(last, match.index));
+        const rawUrl = match[0];
+        const url = rawUrl.replace(/[.,;:!?)]+$/g, '');
+        out += `<a href="${escapeHtmlPlainText(url)}" target="_blank" rel="noopener noreferrer">${escapeHtmlPlainText(url)}</a>`;
+        last = match.index + rawUrl.length;
+      }
+
+      out += escapeHtmlPlainText(line.slice(last));
+      return out;
+    })
+    .join('<br />');
 };
 
 const createPhoneHref = (phone: string) => {
@@ -1214,7 +1386,18 @@ function App() {
   const isBlogIndexPage = pathnameNorm === '/blog';
   const isServicesPage = pathnameNorm === '/hizmetler';
   const blogSlug = pathnameRaw.match(/^\/blog\/([^/]+)\/?$/i)?.[1] ?? '';
-  const solutionPageSlug = pathnameRaw.match(/^\/cozum\/([^/]+)\/?$/i)?.[1] ?? '';
+  const solutionPageSlugSegmentRaw = pathnameRaw.match(/^\/cozum\/([^/]+)\/?$/i)?.[1] ?? '';
+  const solutionPageSlug = (() => {
+    if (!solutionPageSlugSegmentRaw) {
+      return '';
+    }
+
+    try {
+      return decodeURIComponent(solutionPageSlugSegmentRaw);
+    } catch {
+      return solutionPageSlugSegmentRaw;
+    }
+  })();
   const [language, setLanguage] = useState('TR');
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [isServiceRequestModalOpen, setIsServiceRequestModalOpen] = useState(false);
@@ -1333,6 +1516,7 @@ function App() {
   const [editingReferenceKey, setEditingReferenceKey] = useState<string | null>(null);
   const [editingSiteServiceKey, setEditingSiteServiceKey] = useState<string | null>(null);
   const [editingSiteApplicationKey, setEditingSiteApplicationKey] = useState<string | null>(null);
+  const [reorderingApplicationKey, setReorderingApplicationKey] = useState<string | null>(null);
   const [editingSitePageKey, setEditingSitePageKey] = useState<string | null>(null);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [productForm, setProductForm] = useState<ProductFormState>(createEmptyProductForm());
@@ -1412,7 +1596,7 @@ function App() {
         return;
       }
 
-      setBlogPosts(nextPosts);
+      setBlogPosts(nextPosts.map(normalizeBlogPostAssetUrls));
       setCurrentBlogPage(page);
       setHasMoreBlogPosts(nextPosts.length === blogIndexPageSize);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1519,16 +1703,27 @@ function App() {
     })
     .filter((item): item is { title: string; url: string; slug: string } => Boolean(item.url));
   const solutionSlugNormalized = solutionPageSlug.trim().toLowerCase();
-  const selectedSolutionProduct = solutionPageSlug
+  const matchingSolutionCategory = solutionPageSlug
+    ? adminCategories.find((category) => category.slug.trim().toLowerCase() === solutionSlugNormalized) ?? null
+    : null;
+  const matchingSolutionProduct = solutionPageSlug
     ? adminProducts.find(
-        (product) => product.slug.trim().toLowerCase() === solutionPageSlug.trim().toLowerCase() && product.isActive,
+        (product) => product.slug.trim().toLowerCase() === solutionSlugNormalized && product.isActive,
       ) ?? null
     : null;
-  const selectedSolutionCategory = selectedSolutionProduct
-    ? null
-    : solutionPageSlug
-      ? adminCategories.find((category) => category.slug.trim().toLowerCase() === solutionSlugNormalized) ?? null
-      : null;
+
+  /** Aynı slug hem üründe hem kategorideyse kategori sayfası açılsın (ürün için farklı slug kullanılmalı). */
+  let selectedSolutionProduct: AdminProduct | null = null;
+  let selectedSolutionCategory: AdminCategory | null = null;
+
+  if (matchingSolutionCategory && matchingSolutionProduct) {
+    selectedSolutionCategory = matchingSolutionCategory;
+    selectedSolutionProduct = null;
+  } else if (matchingSolutionProduct) {
+    selectedSolutionProduct = matchingSolutionProduct;
+  } else if (matchingSolutionCategory) {
+    selectedSolutionCategory = matchingSolutionCategory;
+  }
   const selectedSolutionProductKeyNormalized = selectedSolutionProduct?.key?.trim().toLowerCase() ?? '';
   const selectedSolutionCategoryKeyNormalized =
     selectedSolutionProduct?.categoryKey?.trim().toLowerCase() ??
@@ -1570,12 +1765,18 @@ function App() {
     const productKey = application.productKey.trim().toLowerCase();
     const categoryKey = application.categoryKey.trim().toLowerCase();
 
-    return (
-      (selectedSolutionProductKeyNormalized && productKey === selectedSolutionProductKeyNormalized) ||
-      (selectedSolutionCategoryKeyNormalized && categoryKey === selectedSolutionCategoryKeyNormalized) ||
-      solutionCategoryKeys.includes(categoryKey) ||
-      (solutionSlugNormalized && categoryKey === solutionSlugNormalized)
-    );
+    if (selectedSolutionProduct) {
+      return productKey === selectedSolutionProductKeyNormalized;
+    }
+
+    if (selectedSolutionCategory) {
+      return (
+        categoryKey === selectedSolutionCategoryKeyNormalized ||
+        solutionCategoryKeys.includes(categoryKey)
+      );
+    }
+
+    return false;
   });
   const solutionApplicationsWithImage = activeSolutionApplications.filter(
     (application): application is SiteApplication & { imageUrl: string } => Boolean(application.imageUrl),
@@ -1594,6 +1795,12 @@ function App() {
   const selectedSolutionApplicationIndex = selectedSolutionApplication
     ? solutionApplicationsWithImage.findIndex((application) => application.key === selectedSolutionApplication.key)
     : -1;
+  const solutionLightboxPrevCount =
+    selectedSolutionApplicationIndex >= 0 ? selectedSolutionApplicationIndex : 0;
+  const solutionLightboxNextCount =
+    selectedSolutionApplicationIndex >= 0
+      ? solutionApplicationsWithImage.length - selectedSolutionApplicationIndex - 1
+      : 0;
   const quoteCategories = adminCategories.map((category) => {
     const fallbackProduct = adminProducts.find((product) => product.categoryKey === category.key);
 
@@ -1655,6 +1862,15 @@ function App() {
   const visibleSiteApplications = siteApplicationProductFilter
     ? siteApplications.filter((application) => application.productKey === siteApplicationProductFilter)
     : siteApplications;
+  const sortedVisibleSiteApplications = useMemo(() => {
+    return [...visibleSiteApplications].sort((a, b) => {
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder;
+      }
+
+      return a.key.localeCompare(b.key);
+    });
+  }, [visibleSiteApplications]);
   const selectedVisibleAssetCount = visibleAssets.filter((asset) => selectedAssetKeys.has(asset.key)).length;
   const quoteAnswerSummary = activeQuoteQuestions
     .map((question) => {
@@ -2070,11 +2286,11 @@ function App() {
         const siteApplicationsData = siteApplicationsResult.data ?? {};
 
         if (productsData.products) {
-          setAdminProducts(productsData.products);
+          setAdminProducts(productsData.products.map(normalizeAdminProductAssetUrls));
         }
 
         if (categoriesData.categories) {
-          setAdminCategories(categoriesData.categories);
+          setAdminCategories(categoriesData.categories.map(normalizeAdminCategoryAssetUrls));
         }
 
         if (socialLinksData.links) {
@@ -2091,15 +2307,15 @@ function App() {
         }
 
         if (siteServicesData.services) {
-          setSiteServices(siteServicesData.services);
+          setSiteServices(siteServicesData.services.map(normalizeSiteServiceAssetUrls));
         }
 
         if (referencesData.references) {
-          setSiteReferences(referencesData.references);
+          setSiteReferences(referencesData.references.map(normalizeSiteReferenceAssetUrls));
         }
 
         if (quoteQuestionsData.questions) {
-          setQuoteQuestions(quoteQuestionsData.questions);
+          setQuoteQuestions(quoteQuestionsData.questions.map(normalizeQuoteQuestionAssetUrls));
         }
 
         if (pushoverSettingsData.settings) {
@@ -2116,7 +2332,7 @@ function App() {
         }
 
         if (blogPostsData.posts) {
-          setBlogPosts(blogPostsData.posts);
+          setBlogPosts(blogPostsData.posts.map(normalizeBlogPostAssetUrls));
 
           if (isBlogIndexPage) {
             setCurrentBlogPage(1);
@@ -2137,13 +2353,13 @@ function App() {
         }
 
         if (siteApplicationsData.applications) {
-          setSiteApplications(siteApplicationsData.applications);
+          setSiteApplications(siteApplicationsData.applications.map(normalizeSiteApplicationAssetUrls));
         }
 
         if (blogSlug) {
           const blogPostResponse = await fetch(apiUrl(`/api/blog-posts/${encodeURIComponent(blogSlug)}`));
           const blogPostData = (await blogPostResponse.json().catch(() => null)) as { post?: BlogPost } | null;
-          setSelectedBlogPost(blogPostData?.post ?? null);
+          setSelectedBlogPost(blogPostData?.post ? normalizeBlogPostAssetUrls(blogPostData.post) : null);
         } else {
           setSelectedBlogPost(null);
         }
@@ -3962,11 +4178,11 @@ function App() {
     const siteApplicationsData = siteApplicationsResult.data ?? {};
 
     if (productsData.products) {
-      setAdminProducts(productsData.products);
+      setAdminProducts(productsData.products.map(normalizeAdminProductAssetUrls));
     }
 
     if (categoriesData.categories) {
-      setAdminCategories(categoriesData.categories);
+      setAdminCategories(categoriesData.categories.map(normalizeAdminCategoryAssetUrls));
     }
 
     if (socialLinksData.links) {
@@ -3983,15 +4199,15 @@ function App() {
     }
 
     if (siteServicesData.services) {
-      setSiteServices(siteServicesData.services);
+      setSiteServices(siteServicesData.services.map(normalizeSiteServiceAssetUrls));
     }
 
     if (referencesData.references) {
-      setSiteReferences(referencesData.references);
+      setSiteReferences(referencesData.references.map(normalizeSiteReferenceAssetUrls));
     }
 
     if (quoteQuestionsData.questions) {
-      setQuoteQuestions(quoteQuestionsData.questions);
+      setQuoteQuestions(quoteQuestionsData.questions.map(normalizeQuoteQuestionAssetUrls));
     }
 
     if (pushoverSettingsData.settings) {
@@ -4000,7 +4216,7 @@ function App() {
     }
 
     if (blogPostsData.posts) {
-      setBlogPosts(blogPostsData.posts);
+      setBlogPosts(blogPostsData.posts.map(normalizeBlogPostAssetUrls));
     }
 
     if (blogCategoriesData.categories) {
@@ -4016,7 +4232,7 @@ function App() {
     }
 
     if (siteApplicationsData.applications) {
-      setSiteApplications(siteApplicationsData.applications);
+      setSiteApplications(siteApplicationsData.applications.map(normalizeSiteApplicationAssetUrls));
     }
   };
 
@@ -5362,7 +5578,7 @@ function App() {
       return;
     }
 
-    setSiteReferences(data.references);
+    setSiteReferences(data.references.map(normalizeSiteReferenceAssetUrls));
     setAdminMessage(editingReferenceKey ? 'Referans güncellendi.' : 'Yeni referans eklendi.');
     closeReferenceModal();
   };
@@ -5394,7 +5610,7 @@ function App() {
       return;
     }
 
-    setSiteReferences(data.references);
+    setSiteReferences(data.references.map(normalizeSiteReferenceAssetUrls));
     setAdminMessage('Referans silindi.');
     closeReferenceModal();
   };
@@ -5439,7 +5655,7 @@ function App() {
       return;
     }
 
-    setSiteServices(data.services);
+    setSiteServices(data.services.map(normalizeSiteServiceAssetUrls));
     setAdminMessage(editingSiteServiceKey ? 'Hizmet güncellendi.' : 'Yeni hizmet eklendi.');
     closeSiteServiceModal();
   };
@@ -5471,7 +5687,7 @@ function App() {
       return;
     }
 
-    setSiteServices(data.services);
+    setSiteServices(data.services.map(normalizeSiteServiceAssetUrls));
     setAdminMessage('Hizmet silindi.');
     closeSiteServiceModal();
   };
@@ -5515,7 +5731,7 @@ function App() {
       return;
     }
 
-    setSiteApplications(data.applications);
+    setSiteApplications(data.applications.map(normalizeSiteApplicationAssetUrls));
     setAdminMessage(editingSiteApplicationKey ? 'Uygulama güncellendi.' : 'Yeni uygulama eklendi.');
     closeSiteApplicationModal();
   };
@@ -5547,10 +5763,117 @@ function App() {
       return;
     }
 
-    setSiteApplications(data.applications);
+    setSiteApplications(data.applications.map(normalizeSiteApplicationAssetUrls));
     setAdminMessage('Uygulama silindi.');
     closeSiteApplicationModal();
   };
+
+  const moveSiteApplicationToRank = useCallback(
+    async (movedKey: string, newRankOneBased: number) => {
+      const filtered = siteApplicationProductFilter
+        ? siteApplications.filter((application) => application.productKey === siteApplicationProductFilter)
+        : siteApplications;
+      const sorted = [...filtered].sort((a, b) => {
+        if (a.sortOrder !== b.sortOrder) {
+          return a.sortOrder - b.sortOrder;
+        }
+
+        return a.key.localeCompare(b.key);
+      });
+      const n = sorted.length;
+
+      if (n <= 1) {
+        return;
+      }
+
+      const newIndex = Math.max(0, Math.min(n - 1, Math.round(newRankOneBased) - 1));
+      const oldIndex = sorted.findIndex((a) => a.key === movedKey);
+
+      if (oldIndex < 0 || oldIndex === newIndex) {
+        return;
+      }
+
+      const appA = sorted[oldIndex];
+      const appB = sorted[newIndex];
+      const sortA = appA.sortOrder;
+      const sortB = appB.sortOrder;
+
+      const payload = (app: SiteApplication, order: number) => ({
+        key: app.key,
+        productKey: app.productKey,
+        title: app.title,
+        summary: app.summary,
+        description: app.description,
+        imageUrl: app.imageUrl,
+        sortOrder: order,
+        isActive: app.isActive,
+      });
+
+      const maxSort = siteApplications.reduce((max, app) => Math.max(max, app.sortOrder), 0);
+      const tempSort = maxSort + 1_000_000;
+
+      const put = async (app: SiteApplication, order: number) => {
+        const res = await authorizedFetch(`/api/site-applications/${encodeURIComponent(app.key)}`, {
+          method: 'PUT',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(payload(app, order)),
+        });
+        const data = (await res.json().catch(() => null)) as { applications?: SiteApplication[] } | null;
+
+        if (res.status === 401) {
+          setAdminMessage('Oturum süresi doldu. Lütfen tekrar giriş yapın.');
+          await logoutAdmin();
+          return null;
+        }
+
+        if (!res.ok || !data?.applications) {
+          return null;
+        }
+
+        setSiteApplications(data.applications.map(normalizeSiteApplicationAssetUrls));
+        return data.applications;
+      };
+
+      setReorderingApplicationKey(movedKey);
+
+      try {
+        const after1 = await put(appA, tempSort);
+
+        if (!after1) {
+          setAdminMessage('Sıra güncellenemedi.');
+          await reloadAdminCatalog();
+          return;
+        }
+
+        const after2 = await put(appB, sortA);
+
+        if (!after2) {
+          setAdminMessage('Sıra kısmen güncellendi. Liste yenileniyor.');
+          await reloadAdminCatalog();
+          return;
+        }
+
+        const appAFresh = after2.find((x) => x.key === appA.key);
+
+        if (!appAFresh) {
+          await reloadAdminCatalog();
+          return;
+        }
+
+        const after3 = await put(appAFresh, sortB);
+
+        if (!after3) {
+          setAdminMessage('Sıra kısmen güncellendi. Liste yenileniyor.');
+          await reloadAdminCatalog();
+        }
+      } finally {
+        setReorderingApplicationKey(null);
+      }
+    },
+    [siteApplications, siteApplicationProductFilter, authorizedFetch, logoutAdmin, reloadAdminCatalog],
+  );
 
   const saveSitePage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -6348,7 +6671,7 @@ function App() {
                   <strong>{siteApplications.length}</strong>
                 </article>
                 <article>
-                  <span>Yayında</span>
+                  <span>Aktif</span>
                   <strong>{siteApplications.filter((application) => application.isActive).length}</strong>
                 </article>
                 <article>
@@ -6391,36 +6714,74 @@ function App() {
               </div>
 
               <div className="adminProducts adminReferenceGrid">
-                {visibleSiteApplications.length === 0 ? (
+                {sortedVisibleSiteApplications.length === 0 ? (
                   <p className="adminProductEmpty">Henüz uygulama eklenmedi.</p>
-                ) : visibleSiteApplications.map((application) => (
-                  <article
-                    className={`adminProductCard adminServiceCard${application.isActive ? ' active' : ' passive'}`}
-                    key={application.key}
-                  >
-                    {application.imageUrl ? <img src={application.imageUrl} alt={application.title} /> : <span className="adminServiceImagePlaceholder">Görsel Yok</span>}
-                    <div>
-                      <span>
-                        {application.isActive ? 'Yayında' : 'Pasif'} / {application.productTitle || application.productKey} / Sıra {application.sortOrder}
-                      </span>
-                      <h2>{application.title}</h2>
-                      <p>{application.summary || 'Özet metni eklenmedi.'}</p>
-                      <div className="adminProductCardActions">
-                        <button type="button" onClick={() => openEditSiteApplicationModal(application)}>
-                          Düzenle
-                        </button>
-                        <button
-                          type="button"
-                          className="iconOnly"
-                          aria-label={`${application.title} kaydını kopyala`}
-                          onClick={() => openCopySiteApplicationModal(application)}
-                        >
-                          <Copy size={15} strokeWidth={2.4} />
-                        </button>
+                ) : sortedVisibleSiteApplications.map((application, sortedIndex) => {
+                  const rank = sortedIndex + 1;
+
+                  return (
+                    <article
+                      className={`adminProductCard adminServiceCard adminApplicationCard adminProductCardClickable${application.isActive ? '' : ' passive'}`}
+                      key={application.key}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${application.title} uygulamasını düzenle`}
+                      onClick={() => openEditSiteApplicationModal(application)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          openEditSiteApplicationModal(application);
+                        }
+                      }}
+                    >
+                      {application.imageUrl ? <img src={application.imageUrl} alt={application.title} /> : <span className="adminServiceImagePlaceholder">Görsel Yok</span>}
+                      <div>
+                        <h2 className="adminApplicationCardTitle" title={application.title}>
+                          {application.title}
+                        </h2>
+                        <div className="adminProductCardActions">
+                          <label
+                            className="adminApplicationSortControl"
+                            onClick={(event) => event.stopPropagation()}
+                            onPointerDown={(event) => event.stopPropagation()}
+                          >
+                            <span className="adminApplicationSortLabel">Sıra</span>
+                            <input
+                              className="adminApplicationSortInput"
+                              type="number"
+                              min={1}
+                              max={sortedVisibleSiteApplications.length}
+                              disabled={reorderingApplicationKey !== null}
+                              defaultValue={rank}
+                              key={`rank-${application.key}-${application.sortOrder}-${rank}`}
+                              aria-label={`${application.title} liste sırası`}
+                              onChange={(event) => {
+                                const next = parseInt(event.target.value, 10);
+
+                                if (!Number.isFinite(next)) {
+                                  return;
+                                }
+
+                                void moveSiteApplicationToRank(application.key, next);
+                              }}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="iconOnly"
+                            aria-label={`${application.title} kaydını kopyala`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openCopySiteApplicationModal(application);
+                            }}
+                          >
+                            <Copy size={15} strokeWidth={2.4} />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                ))}
+                    </article>
+                  );
+                })}
               </div>
             </>
           ) : activeAdminSection === 'assets' ? (
@@ -8289,7 +8650,7 @@ function App() {
                       rows={3}
                       value={siteApplicationForm.summary}
                       onChange={(event) => updateSiteApplicationForm('summary', event.target.value)}
-                      placeholder="Kartta gösterilecek kısa özet"
+                      placeholder="Kısa özet. https:// ile başlayan adresler (ör. Instagram) sitede tıklanabilir link olur."
                     />
                   </label>
                   <label className="adminFormWide">
@@ -9228,7 +9589,7 @@ function App() {
                       </div>
                     </section>
                   ) : null}
-                  <div className="blogDetailContent" dangerouslySetInnerHTML={{ __html: selectedSolutionHtmlContent }} />
+                  <div className="blogDetailContent" dangerouslySetInnerHTML={{ __html: resolveApiAssetUrlsInHtml(selectedSolutionHtmlContent) }} />
                   {activeSolutionApplications.length > 0 && (
                     <section className="solutionApplications">
                       <div className="solutionApplicationsHeader">
@@ -9237,24 +9598,46 @@ function App() {
                       </div>
                       <div className="solutionApplicationsGrid">
                         {activeSolutionApplications.map((application) => (
-                          <button
-                            className="solutionApplicationCard"
+                          <div
                             key={application.key}
-                            type="button"
-                            onClick={() => setSelectedSolutionApplication(application)}
-                            disabled={!application.imageUrl}
+                            className={`solutionApplicationCard${application.imageUrl ? '' : ' disabled'}`}
+                            role={application.imageUrl ? 'button' : undefined}
+                            tabIndex={application.imageUrl ? 0 : -1}
+                            aria-disabled={!application.imageUrl}
                             aria-label={`${application.title} görselini büyüt`}
+                            onClick={() => {
+                              if (application.imageUrl) {
+                                setSelectedSolutionApplication(application);
+                              }
+                            }}
+                            onKeyDown={(event) => {
+                              if (!application.imageUrl) {
+                                return;
+                              }
+
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                setSelectedSolutionApplication(application);
+                              }
+                            }}
                           >
                             {application.imageUrl ? <img src={application.imageUrl} alt={application.title} /> : null}
                             <div>
                               <h3>{application.title}</h3>
+                              {application.summary.trim() ? (
+                                <div
+                                  className="solutionApplicationSummary"
+                                  dangerouslySetInnerHTML={{ __html: linkifyPlainTextToHtml(application.summary) }}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onKeyDown={(event) => event.stopPropagation()}
+                                />
+                              ) : null}
                               <div className="solutionApplicationHiddenTags" aria-hidden="true">
                                 <span>{application.productTitle || application.productKey} / {application.categoryTitle || application.categoryKey}</span>
-                                <p>{application.summary}</p>
                                 <small>{application.description}</small>
                               </div>
                             </div>
-                          </button>
+                          </div>
                         ))}
                       </div>
                     </section>
@@ -9287,58 +9670,66 @@ function App() {
                         </motion.button>
                         {solutionApplicationsWithImage.length > 1 && (
                           <>
-                            <button
-                              type="button"
-                              className="imageRevealLightboxNav prev"
-                              aria-label="Önceki görsel"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                goToPreviousSolutionApplication();
-                              }}
-                            >
-                              <ChevronLeft size={20} strokeWidth={2.4} />
-                            </button>
-                            <button
-                              type="button"
-                              className="imageRevealLightboxNav next"
-                              aria-label="Sonraki görsel"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                goToNextSolutionApplication();
-                              }}
-                            >
-                              <ChevronRight size={20} strokeWidth={2.4} />
-                            </button>
+                            <div className="imageRevealLightboxNavCluster imageRevealLightboxNavCluster--prev">
+                              <button
+                                type="button"
+                                className="imageRevealLightboxNav"
+                                aria-label={`Önceki görsel (sola ${solutionLightboxPrevCount} resim)`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  goToPreviousSolutionApplication();
+                                }}
+                              >
+                                <ChevronLeft size={20} strokeWidth={2.4} />
+                              </button>
+                              <span className="imageRevealLightboxNavLabel">{solutionLightboxPrevCount} resim</span>
+                            </div>
+                            <div className="imageRevealLightboxNavCluster imageRevealLightboxNavCluster--next">
+                              <span className="imageRevealLightboxNavLabel">{solutionLightboxNextCount} resim</span>
+                              <button
+                                type="button"
+                                className="imageRevealLightboxNav"
+                                aria-label={`Sonraki görsel (sağda ${solutionLightboxNextCount} resim)`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  goToNextSolutionApplication();
+                                }}
+                              >
+                                <ChevronRight size={20} strokeWidth={2.4} />
+                              </button>
+                            </div>
                           </>
                         )}
-                        <motion.img
-                          className="imageRevealLightboxImage"
-                          src={selectedSolutionApplication.imageUrl}
-                          alt={selectedSolutionApplication.title}
-                          initial={{ opacity: 0, scale: 0.96 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.96 }}
-                          transition={{ duration: 0.2 }}
-                          onClick={(event) => event.stopPropagation()}
-                        />
-                        <motion.p
-                          className="solutionApplicationLightboxTitle"
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 8 }}
-                        >
-                          {selectedSolutionApplication.title}
-                        </motion.p>
-                        <motion.p
-                          className="solutionApplicationLightboxCount"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                        >
-                          {selectedSolutionApplicationIndex >= 0
-                            ? `${selectedSolutionApplicationIndex + 1} / ${solutionApplicationsWithImage.length}`
-                            : `1 / ${solutionApplicationsWithImage.length}`}
-                        </motion.p>
+                        <div className="solutionApplicationLightboxStage">
+                          <motion.img
+                            className="imageRevealLightboxImage"
+                            src={selectedSolutionApplication.imageUrl}
+                            alt={selectedSolutionApplication.title}
+                            initial={{ opacity: 0, scale: 0.96 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.96 }}
+                            transition={{ duration: 0.2 }}
+                            onClick={(event) => event.stopPropagation()}
+                          />
+                          <motion.p
+                            className="solutionApplicationLightboxTitle"
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 8 }}
+                          >
+                            {selectedSolutionApplication.title}
+                          </motion.p>
+                          {selectedSolutionApplication.summary.trim() ? (
+                            <motion.div
+                              className="solutionApplicationLightboxSummary"
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 8 }}
+                              dangerouslySetInnerHTML={{ __html: linkifyPlainTextToHtml(selectedSolutionApplication.summary) }}
+                              onClick={(event) => event.stopPropagation()}
+                            />
+                          ) : null}
+                        </div>
                       </motion.div>
                     ) : null}
                   </AnimatePresence>
@@ -9365,7 +9756,7 @@ function App() {
                   <div className="blogDetailMeta">
                     {selectedBlogPost.publishedAt && <span>{selectedBlogPost.publishedAt}</span>}
                   </div>
-                  <div className="blogDetailContent" dangerouslySetInnerHTML={{ __html: selectedBlogPost.content }} />
+                  <div className="blogDetailContent" dangerouslySetInnerHTML={{ __html: resolveApiAssetUrlsInHtml(selectedBlogPost.content) }} />
                 </>
               ) : (
                 <>
